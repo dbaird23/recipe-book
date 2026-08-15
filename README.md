@@ -5,9 +5,11 @@ recipes and your friends'.
 
 Built from the Claude Design prototype (`Recipe Book.dc.html`).
 
-**[▶ Try the live demo](https://dbaird23.github.io/recipe-book/)** — a static build on GitHub Pages
+**Live app:** [recipe-book.dbaird23.workers.dev](https://recipe-book.dbaird23.workers.dev) —
+invite only, running on Cloudflare Workers + D1 + R2.
+
+**[▶ Try the demo](https://dbaird23.github.io/recipe-book/)** — a static build on GitHub Pages
 that runs entirely in your browser with sample data (single-player; changes stay in your browser).
-The real multi-user app runs on Cloudflare — see [Deploy](#deploy).
 
 ## Features
 

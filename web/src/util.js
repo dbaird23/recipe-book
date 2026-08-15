@@ -50,6 +50,62 @@ export function parseText(text) {
   return { title, prep, cook, serv, ing: ing.join('\n'), dirs: dir.join('\n') };
 }
 
+// ---- ingredient scaling (1×–4× view on the recipe page) ----
+
+const UNI_FRAC = {
+  '¼': 1 / 4, '½': 1 / 2, '¾': 3 / 4, '⅓': 1 / 3, '⅔': 2 / 3,
+  '⅕': 1 / 5, '⅖': 2 / 5, '⅗': 3 / 5, '⅘': 4 / 5, '⅙': 1 / 6,
+  '⅛': 1 / 8, '⅜': 3 / 8, '⅝': 5 / 8, '⅞': 7 / 8,
+};
+const NICE_FRACS = Object.entries(UNI_FRAC).map(([ch, v]) => [v, ch]);
+const UNI_CHARS = Object.keys(UNI_FRAC).join('');
+
+// A quantity: "2", "1.5", "1/2", "½", "1½", "1 1/2", "1 and 1/2"
+const QTY = `(?:\\d+\\s*\\/\\s*\\d+|\\d+(?:\\.\\d+)?(?:\\s*(?:and\\s+)?(?:\\d+\\s*\\/\\s*\\d+|[${UNI_CHARS}]))?|[${UNI_CHARS}])`;
+const LEADING_QTY = new RegExp(`^(${QTY})(\\s*(?:-|–|—|\\bto\\b)\\s*)?(${QTY})?`);
+
+function qtyToNumber(s) {
+  s = s.trim();
+  let total = 0;
+  const mixed = s.match(new RegExp(`^(\\d+(?:\\.\\d+)?)\\s*(?:and\\s+)?(\\d+\\s*\\/\\s*\\d+|[${UNI_CHARS}])?$`));
+  if (mixed) {
+    total = parseFloat(mixed[1]);
+    s = mixed[2] || '';
+  }
+  if (UNI_FRAC[s]) total += UNI_FRAC[s];
+  else if (/\//.test(s)) {
+    const [n, d] = s.split('/').map((x) => parseFloat(x));
+    if (d) total += n / d;
+  } else if (s && !mixed) total = parseFloat(s);
+  return total;
+}
+
+function formatQty(v) {
+  const whole = Math.floor(v + 1e-6);
+  const frac = v - whole;
+  if (frac < 0.03 || 1 - frac < 0.03) return String(Math.round(v));
+  let best = null;
+  for (const [f, ch] of NICE_FRACS) {
+    const err = Math.abs(frac - f);
+    if (!best || err < best[0]) best = [err, ch];
+  }
+  if (best && best[0] < 0.03) return (whole ? whole : '') + best[1];
+  return String(Math.round(v * 100) / 100);
+}
+
+// Scale the leading quantity of one ingredient line ("2 lb chicken" ×2 → "4 lb chicken").
+// Lines without a leading quantity ("Salt and pepper") pass through unchanged.
+export function scaleIngredient(txt, mult) {
+  if (mult === 1) return txt;
+  const labeled = txt.match(/^([A-Za-z][A-Za-z ]{0,20}:\s*)(.*)$/);
+  if (labeled) return labeled[1] + scaleIngredient(labeled[2], mult);
+  const m = txt.match(LEADING_QTY);
+  if (!m || !m[1]) return txt;
+  let out = formatQty(qtyToNumber(m[1]) * mult);
+  if (m[3]) out += m[2] + formatQty(qtyToNumber(m[3]) * mult);
+  return out + txt.slice(m[0].length);
+}
+
 // Tags people created themselves, beyond the built-in meal/tag chips
 export function customTagsFrom(recipes) {
   const standard = new Set([...MEALS, ...TAGS]);

@@ -1,6 +1,6 @@
 import { useRef, useState } from 'react';
 import { Avatar, Photo } from '../components.jsx';
-import { autoNut } from '../util.js';
+import { autoNut, scaleIngredient } from '../util.js';
 
 function SectionLabel({ children, style }) {
   return <div className="section-label" style={{ margin: '22px 0 10px', ...style }}>{children}</div>;
@@ -12,6 +12,7 @@ export default function Recipe({
   onUpdateNotes, onUpdateNut, onAddComment, onAddPhoto, onRemovePhoto,
 }) {
   const [checked, setChecked] = useState({});
+  const [mult, setMult] = useState(1);
   const [photoIdx, setPhotoIdx] = useState(0);
   const [nutEditOpen, setNutEditOpen] = useState(false);
   const [nutDraft, setNutDraft] = useState(null);
@@ -124,10 +125,12 @@ export default function Recipe({
         <div style={{ fontSize: 13, color: 'var(--muted)', marginTop: 4 }}>{ownerLine}</div>
 
         <div style={{ display: 'flex', gap: 8, marginTop: 12 }}>
-          {[['PREP', `${recipe.prep} min`], ['COOK', cookLabel], ['SERVES', recipe.servings]].map(([k, v]) => (
+          {[['PREP', `${recipe.prep} min`], ['COOK', cookLabel], ['SERVES', recipe.servings * mult]].map(([k, v]) => (
             <div key={k} className="stat-card">
               <div style={{ fontSize: 11, color: 'var(--label)', fontWeight: 600 }}>{k}</div>
-              <div style={{ fontSize: 15, fontWeight: 600, marginTop: 2 }}>{v}</div>
+              <div style={{ fontSize: 15, fontWeight: 600, marginTop: 2, color: k === 'SERVES' && mult > 1 ? 'var(--green)' : undefined }}>
+                {v}
+              </div>
             </div>
           ))}
         </div>
@@ -140,7 +143,21 @@ export default function Recipe({
           </div>
         )}
 
-        <SectionLabel>Ingredients</SectionLabel>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', margin: '22px 0 10px' }}>
+          <SectionLabel style={{ margin: 0 }}>Ingredients</SectionLabel>
+          <div style={{ display: 'flex', gap: 4 }}>
+            {[1, 2, 3, 4].map((n) => (
+              <button
+                key={n}
+                className={`chip${mult === n ? ' on' : ''}`}
+                style={{ padding: '4px 10px', fontSize: 12 }}
+                onClick={() => setMult(n)}
+              >
+                {n}×
+              </button>
+            ))}
+          </div>
+        </div>
         <div className="card" style={{ padding: '6px 14px' }}>
           {recipe.ing.map((txt, i) => {
             const on = !!checked[i];
@@ -164,7 +181,7 @@ export default function Recipe({
                   {on ? '✓' : ''}
                 </div>
                 <div style={{ fontSize: 14.5, color: on ? 'var(--faint)' : 'var(--ink)', textDecoration: on ? 'line-through' : 'none', lineHeight: 1.4 }}>
-                  {txt}
+                  {scaleIngredient(txt, mult)}
                 </div>
               </div>
             );

@@ -137,6 +137,25 @@ export function AddStep2({ draft: initial, editing, knownTags = [], onBack, onSa
             Imported from <strong>{d.source}</strong> — they&rsquo;ll be credited as the original creator.
           </div>
         )}
+        {d.from && (
+          <div
+            style={{
+              background: 'var(--green-soft)', borderRadius: 12, padding: '10px 14px', fontSize: 13,
+              color: '#4c5a4c', lineHeight: 1.45, display: 'flex', alignItems: 'center', gap: 10,
+            }}
+          >
+            <span style={{ flex: 1 }}>
+              Originally added by <strong>{d.from}</strong>
+            </span>
+            <button
+              className="btn-text-green"
+              style={{ flex: '0 0 auto', color: 'var(--red)' }}
+              onClick={() => setD({ ...d, from: null })}
+            >
+              Remove
+            </button>
+          </div>
+        )}
         <div>
           <div className="section-label" style={{ marginBottom: 6 }}>Title</div>
           <input className="input" style={{ fontWeight: 600 }} placeholder="Recipe name" value={d.title} onChange={set('title')} />

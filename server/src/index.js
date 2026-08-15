@@ -254,12 +254,14 @@ app.patch('/api/recipes/:id', requireAuth, (req, res) => {
     const r = sanitizeRecipeInput(req.body);
     if (!r.title) return res.status(400).json({ error: 'Give it a title' });
     const keepNut = row.nut_edited ? JSON.parse(row.nut) : autoNut(r.ing.length, r.servings);
+    // "Saved from …" credit: updatable (and removable) when the edit sends a `from` key
+    const fromName = 'from' in req.body ? (String(req.body.from || '').trim() || null) : row.from_name;
     db.prepare(
-      `UPDATE recipes SET title=?,prep=?,cook=?,servings=?,tags=?,ing=?,dir=?,notes=?,source=?,nut=?,updated_at=datetime('now') WHERE id=?`
+      `UPDATE recipes SET title=?,prep=?,cook=?,servings=?,tags=?,ing=?,dir=?,notes=?,source=?,from_name=?,nut=?,updated_at=datetime('now') WHERE id=?`
     ).run(
       r.title, r.prep, r.cook, r.servings,
       JSON.stringify(r.tags), JSON.stringify(r.ing), JSON.stringify(r.dir),
-      r.notes, r.source ?? row.source, JSON.stringify(keepNut), row.id
+      r.notes, r.source ?? row.source, fromName, JSON.stringify(keepNut), row.id
     );
   }
   res.json({ recipe: recipeJson(db.prepare('SELECT * FROM recipes WHERE id=?').get(row.id)) });
@@ -281,9 +283,10 @@ app.post('/api/recipes/:id/save', requireAuth, (req, res) => {
   const owner = db.prepare('SELECT name FROM users WHERE id=?').get(row.owner_id);
   const id = crypto.randomUUID();
   const tx = db.transaction(() => {
+    // Clean copy: keep the recipe itself, drop their tags and comments; credit the friend
     db.prepare(
       `INSERT INTO recipes (id,owner_id,title,prep,cook,servings,tags,ing,dir,notes,source,from_name,nut,nut_edited)
-       SELECT ?, ?, title,prep,cook,servings,tags,ing,dir,notes,source, ?, nut,nut_edited FROM recipes WHERE id=?`
+       SELECT ?, ?, title,prep,cook,servings,'[]',ing,dir,notes,source, ?, nut,nut_edited FROM recipes WHERE id=?`
     ).run(id, req.user.id, owner.name, row.id);
     const photos = db.prepare('SELECT url,position FROM photos WHERE recipe_id=?').all(row.id);
     const ins = db.prepare('INSERT INTO photos (id,recipe_id,url,position) VALUES (?,?,?,?)');

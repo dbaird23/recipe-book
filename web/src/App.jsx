@@ -144,6 +144,7 @@ export default function App() {
       dir: (d.dirs || '').split('\n').map((x) => x.trim()).filter(Boolean),
       notes: d.notes,
       source: d.source,
+      from: d.from ?? null,
       nut: d.nutImport || undefined,
       photoUrls: d.photoUrls,
     };
@@ -283,6 +284,7 @@ export default function App() {
               tags: [...currentRecipe.tags],
               notes: currentRecipe.notes || '',
               source: currentRecipe.source || null,
+              from: currentRecipe.from || null,
               photoUrls: [],
             });
             setEditingId(currentRecipe.id);

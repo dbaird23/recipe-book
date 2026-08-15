@@ -1,0 +1,40 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "recipe-book",
+  "main": "src/index.js",
+  "compatibility_date": "2026-08-01",
+
+  // The built SPA. Navigation requests are served straight from the asset
+  // store; only the API and photo routes wake the Worker.
+  "assets": {
+    "directory": "../web/dist",
+    "not_found_handling": "single-page-application",
+    "run_worker_first": ["/api/*", "/uploads/*"]
+  },
+
+  "d1_databases": [
+    {
+      "binding": "DB",
+      "database_name": "recipe-book",
+      "database_id": "PLACEHOLDER_RUN_NPM_RUN_SETUP",
+      "migrations_dir": "migrations"
+    }
+  ],
+
+  "r2_buckets": [
+    {
+      "binding": "PHOTOS",
+      "bucket_name": "recipe-book-photos"
+    }
+  ],
+
+  "vars": {
+    // Set GOOGLE_CLIENT_ID here (it is public, not a secret) to enable
+    // real Google sign-in. Leave empty to use dev sign-in.
+    "GOOGLE_CLIENT_ID": ""
+  },
+
+  "observability": {
+    "enabled": true
+  }
+}

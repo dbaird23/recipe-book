@@ -1,5 +1,6 @@
 // Import a recipe from a URL by reading its schema.org/Recipe JSON-LD,
 // which nearly every recipe site publishes for search engines.
+import { HttpError } from './util.js';
 
 function isoDurationToMinutes(v) {
   if (!v) return 0;
@@ -91,16 +92,37 @@ function findRecipeNode(node) {
 }
 
 export async function importFromUrl(rawUrl) {
-  const url = new URL(rawUrl.startsWith('http') ? rawUrl : 'https://' + rawUrl);
-  if (!/^https?:$/.test(url.protocol)) throw new Error('Only http(s) links are supported');
+  let url;
+  try {
+    url = new URL(rawUrl.startsWith('http') ? rawUrl : 'https://' + rawUrl);
+  } catch {
+    throw new HttpError(400, "That doesn't look like a link");
+  }
+  if (!/^https?:$/.test(url.protocol)) throw new HttpError(400, 'Only http(s) links are supported');
 
-  const res = await fetch(url, {
-    headers: { 'user-agent': 'Mozilla/5.0 (compatible; RecipeBook/1.0)', accept: 'text/html' },
-    redirect: 'follow',
-    signal: AbortSignal.timeout(15000),
-  });
-  if (!res.ok) throw new Error(`That page returned ${res.status}`);
-  const html = await res.text();
+  let res, html;
+  try {
+    res = await fetch(url, {
+      headers: {
+        // Recipe sites commonly block unfamiliar agents, so look like a browser
+        'user-agent':
+          'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0 Safari/537.36',
+        accept: 'text/html,application/xhtml+xml',
+        'accept-language': 'en-US,en;q=0.9',
+      },
+      redirect: 'follow',
+      signal: AbortSignal.timeout(20000),
+    });
+    if (!res.ok) throw new HttpError(422, `That page returned ${res.status}`);
+    html = await res.text();
+  } catch (e) {
+    if (e instanceof HttpError) throw e;
+    console.error(`import failed for ${url.hostname}:`, e?.message || e);
+    throw new HttpError(
+      502,
+      `Couldn’t read ${url.hostname} — the site blocked us. Try “paste the text” instead.`
+    );
+  }
 
   const domain = url.hostname.replace(/^www\./, '');
   let recipe = null;
@@ -113,11 +135,7 @@ export async function importFromUrl(rawUrl) {
     }
     if (recipe) break;
   }
-  if (!recipe) {
-    const err = new Error(`Couldn't find a recipe on ${domain}. Try pasting the text instead.`);
-    err.status = 422;
-    throw err;
-  }
+  if (!recipe) throw new HttpError(422, `Couldn't find a recipe on ${domain}. Try pasting the text instead.`);
 
   const nutrition = recipe.nutrition || {};
   const prep = isoDurationToMinutes(recipe.prepTime);

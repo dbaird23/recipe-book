@@ -1,0 +1,19 @@
+{
+  "name": "recipe-book",
+  "private": true,
+  "version": "0.1.0",
+  "description": "A private, invite-only recipe book for family and friends",
+  "workspaces": [
+    "server",
+    "web"
+  ],
+  "scripts": {
+    "dev": "concurrently -n server,web -c green,blue \"npm run dev -w server\" \"npm run dev -w web\"",
+    "seed": "npm run seed -w server",
+    "build": "npm run build -w web",
+    "start": "NODE_ENV=production node server/src/index.js"
+  },
+  "devDependencies": {
+    "concurrently": "^9.1.0"
+  }
+}

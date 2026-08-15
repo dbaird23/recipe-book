@@ -5,6 +5,10 @@ recipes and your friends'.
 
 Built from the Claude Design prototype (`Recipe Book.dc.html`).
 
+**[▶ Try the live demo](https://dbaird23.github.io/recipe-book/)** — a static build on GitHub Pages
+that runs entirely in your browser with sample data (single-player; changes stay in your browser).
+The real multi-user app needs the Node server below.
+
 ## Features
 
 - **My Recipes** — list or grid view, search, meal/tag filters, newest/A–Z sort

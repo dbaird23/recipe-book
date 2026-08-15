@@ -1,3 +1,8 @@
+import { mockApi } from './mockApi.js';
+
+// Static demo builds (GitHub Pages) run entirely in the browser
+const DEMO = import.meta.env.VITE_DEMO === '1';
+
 async function request(path, options = {}) {
   const res = await fetch(path, {
     headers: options.body instanceof FormData ? {} : { 'Content-Type': 'application/json' },
@@ -19,7 +24,7 @@ async function request(path, options = {}) {
   return data;
 }
 
-export const api = {
+const realApi = {
   config: () => request('/api/config'),
   me: () => request('/api/me'),
   authGoogle: (credential, inviteToken) => request('/api/auth/google', { method: 'POST', body: { credential, inviteToken } }),
@@ -62,3 +67,5 @@ export const api = {
 
   importUrl: (url) => request('/api/import', { method: 'POST', body: { url } }),
 };
+
+export const api = DEMO ? mockApi : realApi;

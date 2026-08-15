@@ -62,6 +62,17 @@ export default function SignIn({ config, invite, inviteToken, onSignedIn, onErro
         Your private recipe book. No feeds, no strangers — just your recipes and your friends&rsquo;.
       </div>
 
+      {config.demo && (
+        <button
+          className="btn-primary"
+          style={{ marginTop: 34, width: 'auto', padding: '13px 32px' }}
+          disabled={busy}
+          onClick={() => handle(() => api.authDev('Anna', 'demo@recipebook'))}
+        >
+          {busy ? 'Opening…' : 'Try the demo'}
+        </button>
+      )}
+
       {config.googleEnabled && (
         <GoogleButton
           clientId={config.googleClientId}
@@ -69,7 +80,7 @@ export default function SignIn({ config, invite, inviteToken, onSignedIn, onErro
         />
       )}
 
-      {config.devLoginEnabled && !devOpen && (
+      {config.devLoginEnabled && !config.demo && !devOpen && (
         <button
           className={config.googleEnabled ? 'btn-ghost' : 'btn-secondary'}
           style={{ marginTop: config.googleEnabled ? 12 : 34, width: 'auto', padding: '13px 24px' }}
@@ -99,7 +110,11 @@ export default function SignIn({ config, invite, inviteToken, onSignedIn, onErro
       )}
 
       <div style={{ marginTop: 18, fontSize: 12, color: 'var(--faint)' }}>
-        {invite ? `Invite only · You were invited by ${invite.inviter}` : 'Invite only'}
+        {config.demo
+          ? 'Demo · everything runs and stays in this browser'
+          : invite
+            ? `Invite only · You were invited by ${invite.inviter}`
+            : 'Invite only'}
       </div>
     </div>
   );

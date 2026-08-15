@@ -78,7 +78,7 @@ export default function App() {
           } catch {
             /* recipe gone or not visible */
           }
-          history.replaceState(null, '', '/');
+          history.replaceState(null, '', import.meta.env.BASE_URL);
         }
       } catch {
         /* not signed in */
@@ -89,7 +89,7 @@ export default function App() {
 
   async function handleSignedIn(u) {
     setUser(u);
-    if (inviteToken) history.replaceState(null, '', '/');
+    if (inviteToken) history.replaceState(null, '', import.meta.env.BASE_URL);
     await loadAll();
   }
 

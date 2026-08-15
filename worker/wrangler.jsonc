@@ -16,7 +16,7 @@
     {
       "binding": "DB",
       "database_name": "recipe-book",
-      "database_id": "PLACEHOLDER_RUN_NPM_RUN_SETUP",
+      "database_id": "06b570ab-231d-4a89-9974-b2704e56e1e7",
       "migrations_dir": "migrations"
     }
   ],

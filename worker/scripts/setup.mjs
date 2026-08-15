@@ -12,7 +12,7 @@ const configPath = path.join(root, 'wrangler.jsonc');
 const wrangler = (args, opts = {}) =>
   execFileSync('npx', ['wrangler', ...args], { cwd: root, encoding: 'utf8', stdio: ['inherit', 'pipe', 'pipe'], ...opts });
 
-function tryWrangler(args, label) {
+function tryWrangler(args, label, { fatal = true } = {}) {
   try {
     return wrangler(args);
   } catch (e) {
@@ -20,6 +20,11 @@ function tryWrangler(args, label) {
     if (/already exists/i.test(out)) {
       console.log(`• ${label} already exists — reusing it`);
       return out;
+    }
+    if (!fatal) {
+      console.warn(`\n⚠ Could not create ${label}:`);
+      console.warn(out.split('\n').filter((l) => /ERROR|code:|enable/i.test(l)).join('\n') || out);
+      return null;
     }
     console.error(out || e.message);
     throw new Error(`Failed to create ${label}`);
@@ -45,9 +50,25 @@ if (updated !== config) {
 }
 
 console.log('Creating R2 bucket "recipe-book-photos"…');
-tryWrangler(['r2', 'bucket', 'create', 'recipe-book-photos'], 'R2 bucket');
+// R2 needs a one-time opt-in per account, so this can fail while everything
+// else succeeds. Keep going and tell the user what to click.
+const r2 = tryWrangler(['r2', 'bucket', 'create', 'recipe-book-photos'], 'R2 bucket', { fatal: false });
 
-console.log('Applying migrations…');
+console.log('\nApplying migrations…');
 wrangler(['d1', 'migrations', 'apply', 'recipe-book', '--remote'], { stdio: 'inherit' });
 
-console.log('\nSetup complete. Next: npm run deploy');
+if (r2 === null) {
+  console.log(
+    [
+      '',
+      'R2 (photo storage) is not enabled on this account yet.',
+      '  1. Open https://dash.cloudflare.com/?to=/:account/r2 and enable R2',
+      '  2. Re-run: npm run setup',
+      '',
+      'Everything else is ready. Photo uploads will fail until R2 is enabled;',
+      'the rest of the app works without it.',
+    ].join('\n')
+  );
+} else {
+  console.log('\nSetup complete. Next: npm run deploy');
+}

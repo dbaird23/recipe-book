@@ -1,81 +1,125 @@
 import { useState } from 'react';
 import { Photo } from '../components.jsx';
-import { DAY_NAMES, mondayOf, addDays, isoDate, shortDate, isToday, weekTitle, metaOf } from '../util.js';
+import { DAY_NAMES, MEAL_SLOTS, mondayOf, addDays, isoDate, shortDate, isToday, weekTitle, metaOf } from '../util.js';
 
-function DayCard({ day, entry, onPick, onClear, onOpenRecipe, onSaveNote }) {
-  const [noteDraft, setNoteDraft] = useState(null); // null = not editing
-  const note = entry?.note || '';
-  const recipe = entry?.recipe || null;
-  const unavailable = entry?.type === 'recipe' && !recipe;
+const SLOT_ROW = {
+  display: 'flex', gap: 10, alignItems: 'center', padding: '7px 0', borderTop: '1px solid #f4f1ea',
+};
+
+// Wide enough for BREAKFAST, so all three meals line up in a column
+const SLOT_LABEL = { flex: '0 0 auto', width: 78, fontSize: 10.5, fontWeight: 700, letterSpacing: 0.7, color: 'var(--label)' };
+
+/**
+ * One meal on one day. Filled with a recipe it opens that recipe; filled with
+ * leftovers or a typed plan it reopens the picker, so changing your mind is
+ * one tap either way. The × clears just this meal.
+ */
+function Slot({ label, meal, onPick, onClear, onOpenRecipe }) {
+  const recipe = meal?.recipe || null;
+  const unavailable = meal?.type === 'recipe' && !recipe;
 
   return (
-    <div className="card" style={{ padding: '12px 14px' }}>
-      <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between' }}>
+    <div style={SLOT_ROW}>
+      <div style={SLOT_LABEL}>{label.toUpperCase()}</div>
+
+      {!meal && (
+        <button
+          onClick={onPick}
+          style={{ flex: 1, minWidth: 0, textAlign: 'left', border: 'none', background: 'none', color: '#a08c80', fontSize: 13, fontWeight: 600, cursor: 'pointer', padding: '3px 0' }}
+        >
+          + Add
+        </button>
+      )}
+
+      {recipe && (
+        <button
+          onClick={() => onOpenRecipe(recipe.id)}
+          style={{ flex: 1, minWidth: 0, display: 'flex', gap: 9, alignItems: 'center', background: 'none', border: 0, padding: 0, textAlign: 'left', cursor: 'pointer' }}
+        >
+          <Photo
+            photo={recipe.photoUrl ? { url: recipe.photoUrl } : null}
+            style={{ width: 32, height: 32, borderRadius: 7, flex: '0 0 auto', overflow: 'hidden' }}
+            className={recipe.photoUrl ? '' : 'photo-ph'}
+            label=""
+          />
+          <div style={{ flex: 1, minWidth: 0 }}>
+            <div style={{ fontSize: 13.5, fontWeight: 600, lineHeight: 1.25, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+              {recipe.title}
+            </div>
+            <div style={{ fontSize: 11.5, color: 'var(--muted)', marginTop: 1 }}>
+              {(recipe.mine ? 'Yours' : recipe.ownerName) + ' · ' + metaOf(recipe)}
+            </div>
+          </div>
+        </button>
+      )}
+
+      {meal && !recipe && (
+        <button
+          onClick={onPick}
+          style={{ flex: 1, minWidth: 0, textAlign: 'left', background: 'none', border: 0, padding: 0, cursor: 'pointer' }}
+        >
+          <span
+            style={{
+              fontSize: 12.5, fontWeight: 600, borderRadius: 999, padding: '4px 11px',
+              color: unavailable ? 'var(--faint)' : 'var(--chip-fg)', background: '#f1efe7',
+            }}
+          >
+            {unavailable ? 'Recipe unavailable' : meal.type === 'leftovers' ? 'Leftovers' : meal.text}
+          </span>
+        </button>
+      )}
+
+      {meal && (
+        <button
+          onClick={onClear}
+          aria-label={`Clear ${label.toLowerCase()}`}
+          style={{ flex: '0 0 auto', border: 'none', background: 'none', color: '#c9c3be', fontSize: 16, lineHeight: 1, cursor: 'pointer', padding: '2px 2px 4px' }}
+        >
+          ×
+        </button>
+      )}
+    </div>
+  );
+}
+
+function DayCard({ day, entry, onPick, onClearMeal, onClearDay, onOpenRecipe, onSaveNote }) {
+  const [noteDraft, setNoteDraft] = useState(null); // null = not editing
+  const note = entry?.note || '';
+  const meals = entry?.meals || {};
+  const anyPlanned = MEAL_SLOTS.some((s) => meals[s.key]);
+
+  return (
+    <div className="card" style={{ padding: '12px 14px 10px' }}>
+      <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', paddingBottom: 6 }}>
         <div style={{ display: 'flex', gap: 8, alignItems: 'baseline' }}>
           <span style={{ fontSize: 14, fontWeight: 700, color: isToday(day.date) ? 'var(--green)' : 'var(--ink)' }}>
             {day.name}
           </span>
           <span style={{ fontSize: 12, color: 'var(--faint)' }}>{shortDate(day.date)}</span>
         </div>
-        {entry?.type && (
+        {anyPlanned && (
           <button
-            onClick={onClear}
+            onClick={onClearDay}
             style={{ border: 'none', background: 'none', color: 'var(--faint)', fontSize: 12, fontWeight: 600, cursor: 'pointer', padding: 2 }}
           >
-            Clear
+            Clear day
           </button>
         )}
       </div>
 
-      {recipe && (
-        <button
-          onClick={() => onOpenRecipe(recipe.id)}
-          style={{ display: 'flex', gap: 10, alignItems: 'center', marginTop: 9, cursor: 'pointer', background: 'none', border: 0, padding: 0, width: '100%', textAlign: 'left' }}
-        >
-          <Photo
-            photo={recipe.photoUrl ? { url: recipe.photoUrl } : null}
-            style={{ width: 40, height: 40, borderRadius: 8, flex: '0 0 auto', overflow: 'hidden' }}
-            className={recipe.photoUrl ? '' : 'photo-ph'}
-            label=""
-          />
-          <div style={{ flex: 1, minWidth: 0 }}>
-            <div style={{ fontSize: 14.5, fontWeight: 600, lineHeight: 1.25 }}>{recipe.title}</div>
-            <div style={{ fontSize: 12, color: 'var(--muted)', marginTop: 1 }}>
-              {(recipe.mine ? 'Yours' : recipe.ownerName) + ' · ' + metaOf(recipe)}
-            </div>
-          </div>
-          <div className="chev" style={{ fontSize: 18 }}>›</div>
-        </button>
-      )}
-
-      {unavailable && (
-        <div style={{ marginTop: 9, fontSize: 13, color: 'var(--faint)' }}>
-          That recipe isn’t available any more.
-        </div>
-      )}
-
-      {entry?.type && entry.type !== 'recipe' && (
-        <div style={{ marginTop: 9 }}>
-          <span style={{ fontSize: 13, fontWeight: 600, color: 'var(--chip-fg)', background: '#f1efe7', borderRadius: 999, padding: '5px 12px' }}>
-            {entry.type === 'leftovers' ? 'Leftovers' : entry.text}
-          </span>
-        </div>
-      )}
-
-      {!entry?.type && (
-        <button
-          onClick={onPick}
-          style={{
-            width: '100%', marginTop: 9, border: '1.5px dashed #ddd6cb', background: 'none', color: '#a08c80',
-            borderRadius: 10, padding: '10px 12px', fontSize: 13.5, fontWeight: 600, cursor: 'pointer', textAlign: 'left',
-          }}
-        >
-          + Plan dinner
-        </button>
-      )}
+      {MEAL_SLOTS.map((slot) => (
+        <Slot
+          key={slot.key}
+          label={slot.label}
+          meal={meals[slot.key]}
+          onPick={() => onPick(slot)}
+          onClear={() => onClearMeal(slot)}
+          onOpenRecipe={onOpenRecipe}
+        />
+      ))}
 
       {noteDraft !== null ? (
-        <div style={{ marginTop: 8, display: 'flex', gap: 8 }}>
+        <div style={{ marginTop: 9, display: 'flex', gap: 8 }}>
           <input
             className="input"
             autoFocus
@@ -96,7 +140,7 @@ function DayCard({ day, entry, onPick, onClear, onOpenRecipe, onSaveNote }) {
         <div
           onClick={() => setNoteDraft(note)}
           style={{
-            marginTop: 8, fontSize: 12.5, color: '#8a8468', background: 'var(--note-bg)',
+            marginTop: 9, fontSize: 12.5, color: '#8a8468', background: 'var(--note-bg)',
             border: '1px solid var(--note-bd)', borderRadius: 8, padding: '6px 10px', cursor: 'pointer',
           }}
         >
@@ -114,7 +158,7 @@ function DayCard({ day, entry, onPick, onClear, onOpenRecipe, onSaveNote }) {
   );
 }
 
-export default function Plan({ weekOffset, setWeekOffset, entries, onPick, onClear, onOpenRecipe, onSaveNote }) {
+export default function Plan({ weekOffset, setWeekOffset, entries, onPick, onClearMeal, onClearDay, onOpenRecipe, onSaveNote }) {
   const monday = mondayOf(weekOffset);
   const days = DAY_NAMES.map((name, i) => ({ name, date: addDays(monday, i) }));
   const byDate = Object.fromEntries(entries.map((e) => [e.date, e]));
@@ -128,7 +172,7 @@ export default function Plan({ weekOffset, setWeekOffset, entries, onPick, onCle
       <div style={{ padding: '0 20px 10px', display: 'flex', alignItems: 'center', gap: 10 }}>
         <button className="week-nav" onClick={() => setWeekOffset(weekOffset - 1)} aria-label="Previous week">‹</button>
         <div style={{ fontSize: 12.5, color: 'var(--muted)', minWidth: 110, textAlign: 'center' }}>
-          {shortDate(monday)} – {shortDate(addDays(monday, 6))} · Dinners
+          {shortDate(monday)} – {shortDate(addDays(monday, 6))}
         </div>
         <button className="week-nav" onClick={() => setWeekOffset(weekOffset + 1)} aria-label="Next week">›</button>
         {weekOffset !== 0 && (
@@ -142,8 +186,9 @@ export default function Plan({ weekOffset, setWeekOffset, entries, onPick, onCle
             key={isoDate(day.date)}
             day={day}
             entry={byDate[isoDate(day.date)]}
-            onPick={() => onPick(day)}
-            onClear={() => onClear(isoDate(day.date))}
+            onPick={(slot) => onPick(day, slot)}
+            onClearMeal={(slot) => onClearMeal(isoDate(day.date), slot)}
+            onClearDay={() => onClearDay(isoDate(day.date))}
             onOpenRecipe={onOpenRecipe}
             onSaveNote={(note) => onSaveNote(isoDate(day.date), note)}
           />

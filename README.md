@@ -23,8 +23,11 @@ that runs entirely in your browser with sample data (single-player; changes stay
   ("2 cans black beans"); the grocery list leaves those ingredients out and shows you what it skipped.
   **Take inventory** walks the shelves in one pass — step each count up or down, and anything you
   zero out drops off when you save
+- **Plan** — a week at a time, with breakfast, lunch and dinner on every day. Each meal takes a
+  recipe (yours or a friend's), "leftovers", or anything you type ("Takeout", "Date night"), plus a
+  note for the day; clear one meal or the whole day in a tap
 - **Groceries** — its own tab, built from the week's plan and laid out by aisle (produce, dairy,
-  freezer…) rather than by day, so it's one walk through the shop. An ingredient several dinners need
+  freezer…) rather than by day, so it's one walk through the shop. An ingredient several meals need
   is a single line that says how many recipes want it — tap to see which, or to open one. Add
   anything by hand, and tick things off as you go
 - **Friends** — each member has their own book; browse a friend's recipes, search across all friends,
@@ -83,8 +86,8 @@ the key in an `Authorization: Bearer` header.
 | `create_recipe` | Add a recipe to your book |
 | `update_recipe` | Change a recipe you own; send only the fields you want changed |
 | `import_recipe_from_url` | Parse a recipe off a web page, optionally saving it straight away |
-| `get_meal_plan` | What's planned for dinner across a date range |
-| `set_meal_plan_day` | Set or clear one day's dinner and note |
+| `get_meal_plan` | What's planned to eat across a date range — breakfast, lunch and dinner |
+| `set_meal_plan_day` | Set or clear any of one day's meals, and its note |
 | `get_pantry` | What's already in the kitchen — pantry, fridge and freezer |
 | `add_pantry_item` | Put something in the kitchen, from a typed line or explicit fields |
 | `update_pantry_item` | Change an item's name, count, unit or shelf |

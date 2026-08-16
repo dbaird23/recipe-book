@@ -39,6 +39,11 @@ export function sanitizeRecipeInput(body) {
   };
 }
 
+// ---------- meal plan ----------
+
+/** The meals of a planned day, in the order they're eaten. */
+export const MEALS = ['breakfast', 'lunch', 'dinner'];
+
 // ---------- pantry ----------
 
 export const PANTRY_LOCATIONS = ['pantry', 'fridge', 'freezer'];

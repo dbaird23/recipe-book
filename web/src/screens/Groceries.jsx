@@ -41,7 +41,7 @@ function ItemRow({ item, checked, onToggle, onOpenRecipe, onRemove }) {
                 className="btn-text-green"
                 style={{ fontSize: 11.5, padding: 0 }}
               >
-                {distinct > 1 ? `For ${distinct} recipes` : `For ${item.sources.length} dinners`} {open ? '⌃' : '⌄'}
+                {distinct > 1 ? `For ${distinct} recipes` : `For ${item.sources.length} meals`} {open ? '⌃' : '⌄'}
               </button>
               {item.amounts.length > 0 && (
                 <span style={{ fontSize: 11.5, color: 'var(--faint)' }}>{item.amounts.join(' + ')}</span>
@@ -54,7 +54,7 @@ function ItemRow({ item, checked, onToggle, onOpenRecipe, onRemove }) {
               onClick={(e) => { e.stopPropagation(); onOpenRecipe(only.recipeId); }}
               style={{ border: 'none', background: 'none', padding: '2px 0 0', fontSize: 11.5, color: 'var(--faint)', cursor: 'pointer' }}
             >
-              {only.dayName.slice(0, 3)} · {only.title}
+              {only.dayName.slice(0, 3)} {only.meal.toLowerCase()} · {only.title}
             </button>
           )}
 
@@ -78,7 +78,7 @@ function ItemRow({ item, checked, onToggle, onOpenRecipe, onRemove }) {
         <div style={{ margin: '0 0 9px 28px', display: 'flex', flexDirection: 'column', gap: 5 }}>
           {item.sources.map((s) => (
             <button
-              key={`${s.date}-${s.recipeId}`}
+              key={`${s.date}-${s.meal}-${s.recipeId}`}
               onClick={() => onOpenRecipe(s.recipeId)}
               style={{
                 display: 'flex', alignItems: 'center', gap: 8, textAlign: 'left', cursor: 'pointer',
@@ -88,7 +88,9 @@ function ItemRow({ item, checked, onToggle, onOpenRecipe, onRemove }) {
               <span style={{ fontSize: 11, fontWeight: 700, color: 'var(--green)', letterSpacing: 0.5 }}>
                 {s.dayName.slice(0, 3).toUpperCase()}
               </span>
-              <span style={{ flex: 1, minWidth: 0, fontSize: 12.5, color: 'var(--ink)' }}>{s.title}</span>
+              <span style={{ flex: 1, minWidth: 0, fontSize: 12.5, color: 'var(--ink)' }}>
+                {s.title} <span style={{ color: 'var(--faint)' }}>· {s.meal.toLowerCase()}</span>
+              </span>
               <span className="chev" style={{ fontSize: 16, padding: 0 }}>›</span>
             </button>
           ))}

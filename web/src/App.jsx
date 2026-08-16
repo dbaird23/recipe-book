@@ -10,7 +10,7 @@ import Plan from './screens/Plan.jsx';
 import Pantry from './screens/Pantry.jsx';
 import Groceries from './screens/Groceries.jsx';
 import { ProfileSheet, ApiKeysSheet, FilterSheet, ShareSheet, InviteSheet, RemoveFriendSheet, PlanPickerSheet } from './sheets.jsx';
-import { matchesFilters, customTagsFrom, nextSort, buildGroceryList, mondayOf, addDays, isoDate } from './util.js';
+import { matchesFilters, customTagsFrom, nextSort, buildGroceryList, MEAL_SLOTS, mondayOf, addDays, isoDate } from './util.js';
 
 const EMPTY_FILTERS = { selMeals: [], selTags: [], query: '', rating: 0 };
 
@@ -42,7 +42,7 @@ export default function App() {
   // meal plan
   const [weekOffset, setWeekOffset] = useState(0);
   const [planEntries, setPlanEntries] = useState([]);
-  const [pickerDay, setPickerDay] = useState(null);
+  const [picking, setPicking] = useState(null); // { day, slot } while the picker is open
   // Ticks stay in the browser: they're a scratchpad for one trip round the
   // shop, not something worth a round trip while you're standing in an aisle.
   const [groceryChecked, setGroceryChecked] = useState(() => {
@@ -163,12 +163,21 @@ export default function App() {
       const { entry } = await api.setPlanDay(date, body);
       setPlanEntries((prev) => {
         const rest = prev.filter((e) => e.date !== date);
-        return entry.type || entry.note ? [...rest, entry] : rest;
+        const anything = entry.note || MEAL_SLOTS.some((s) => entry.meals[s.key]);
+        return anything ? [...rest, entry] : rest;
       });
       return entry;
     } catch (e) {
       toast(e.message);
     }
+  }
+
+  // Which slot the picker was opened on, then shut it — the sheet closes as
+  // the write goes out, so the day and meal have to be read first
+  function closePicker() {
+    const { day, slot } = picking;
+    setPicking(null);
+    return { date: isoDate(day.date), meal: slot.key };
   }
 
   // Every recipe you could plan: yours plus your friends', labelled by owner
@@ -377,8 +386,9 @@ export default function App() {
           weekOffset={weekOffset}
           setWeekOffset={setWeekOffset}
           entries={planEntries}
-          onPick={(day) => setPickerDay(day)}
-          onClear={(date) => savePlanDay(date, { dinner: null })}
+          onPick={(day, slot) => setPicking({ day, slot })}
+          onClearMeal={(date, slot) => savePlanDay(date, { [slot.key]: null })}
+          onClearDay={(date) => savePlanDay(date, Object.fromEntries(MEAL_SLOTS.map((s) => [s.key, null])))}
           onSaveNote={(date, note) => savePlanDay(date, { note })}
           onOpenRecipe={(id) => openRecipeById(id, 'plan')}
         />
@@ -592,27 +602,25 @@ export default function App() {
       )}
       {sheet === 'invite' && <InviteSheet onClose={() => setSheet(null)} toast={toast} />}
 
-      {pickerDay && (
+      {picking && (
         <PlanPickerSheet
-          dayName={pickerDay.name}
+          dayName={picking.day.name}
+          mealLabel={picking.slot.label}
           recipes={plannableRecipes}
-          onClose={() => setPickerDay(null)}
+          onClose={() => setPicking(null)}
           toast={toast}
           onPickRecipe={async (r, surprise) => {
-            const date = isoDate(pickerDay.date);
-            setPickerDay(null);
-            await savePlanDay(date, { dinner: { type: 'recipe', recipeId: r.id } });
+            const { date, meal } = closePicker();
+            await savePlanDay(date, { [meal]: { type: 'recipe', recipeId: r.id } });
             if (surprise) toast(`Surprise: ${r.title}`);
           }}
           onPickLeftovers={() => {
-            const date = isoDate(pickerDay.date);
-            setPickerDay(null);
-            savePlanDay(date, { dinner: { type: 'leftovers' } });
+            const { date, meal } = closePicker();
+            savePlanDay(date, { [meal]: { type: 'leftovers' } });
           }}
           onPickText={(text) => {
-            const date = isoDate(pickerDay.date);
-            setPickerDay(null);
-            savePlanDay(date, { dinner: { type: 'text', text } });
+            const { date, meal } = closePicker();
+            savePlanDay(date, { [meal]: { type: 'text', text } });
           }}
         />
       )}

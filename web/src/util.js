@@ -147,6 +147,13 @@ export function parseText(text) {
 
 export const DAY_NAMES = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'];
 
+/** The meals of a planned day, in the order they're eaten. Mirrors worker/src/util.js. */
+export const MEAL_SLOTS = [
+  { key: 'breakfast', label: 'Breakfast' },
+  { key: 'lunch', label: 'Lunch' },
+  { key: 'dinner', label: 'Dinner' },
+];
+
 /** Monday of the week `offset` weeks from the current one. */
 export function mondayOf(offset = 0) {
   const d = new Date();
@@ -385,7 +392,7 @@ const capitalize = (s) => (s ? s[0].toUpperCase() + s.slice(1) : s);
 
 /**
  * The week's shopping, laid out the way a shop is: by aisle rather than by
- * day, with an ingredient that several dinners need collapsed onto one line
+ * day, with an ingredient that several meals need collapsed onto one line
  * that remembers which recipes wanted it. Anything the pantry already covers
  * is dropped, and every drop is handed back in `skipped` — a loose name match
  * will occasionally lose something you did need.
@@ -397,29 +404,33 @@ export function buildGroceryList({ entries, weekOffset, pantry = [], manual = []
   DAY_NAMES.forEach((dayName, i) => {
     const date = isoDate(addDays(mondayOf(weekOffset), i));
     const entry = entries.find((e) => e.date === date);
-    if (!entry?.recipe) return;
-    for (const text of entry.recipe.ing) {
-      const have = pantrySkip(text, pantry);
-      if (have) {
-        skippedByText.set(text, have.location);
-        continue;
-      }
-      const { amount, name } = splitIngredient(text);
-      const key = mergeKey(name) || text.toLowerCase();
-      const source = { recipeId: entry.recipe.id, title: entry.recipe.title, dayName, date };
-      const row = rows.get(key);
-      if (row) {
-        row.sources.push(source);
-        row.amounts.push(amount);
-      } else {
-        rows.set(key, {
-          key: `ing:${key}`,
-          text,
-          name: shoppingName(name),
-          amounts: [amount],
-          sources: [source],
-          section: grocerySection(text),
-        });
+    if (!entry) return;
+    for (const slot of MEAL_SLOTS) {
+      const recipe = entry.meals?.[slot.key]?.recipe;
+      if (!recipe) continue;
+      for (const text of recipe.ing) {
+        const have = pantrySkip(text, pantry);
+        if (have) {
+          skippedByText.set(text, have.location);
+          continue;
+        }
+        const { amount, name } = splitIngredient(text);
+        const key = mergeKey(name) || text.toLowerCase();
+        const source = { recipeId: recipe.id, title: recipe.title, dayName, date, meal: slot.label };
+        const row = rows.get(key);
+        if (row) {
+          row.sources.push(source);
+          row.amounts.push(amount);
+        } else {
+          rows.set(key, {
+            key: `ing:${key}`,
+            text,
+            name: shoppingName(name),
+            amounts: [amount],
+            sources: [source],
+            section: grocerySection(text),
+          });
+        }
       }
     }
   });

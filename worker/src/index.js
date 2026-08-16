@@ -12,7 +12,7 @@ import { bearerToken, userForToken, touchApiKey, listApiKeys, createApiKey, revo
 import { handleMcp } from './mcp.js';
 import {
   HttpError, uid, nowIso, pairKey, json, autoNut, sanitizeRecipeInput, putImage, photoUrl,
-  PANTRY_LOCATIONS, parsePantryEntry, GROCERY_SECTIONS, grocerySection,
+  PANTRY_LOCATIONS, parsePantryEntry, GROCERY_SECTIONS, grocerySection, MEALS,
 } from './util.js';
 
 // ---------- tiny router ----------
@@ -478,85 +478,111 @@ async function planRecipe(ctx, recipeId, myId, friendIds) {
   };
 }
 
+/** A day as the app and the MCP tools read it: three meals and a note. */
+const emptyDay = (date) => ({ date, note: '', meals: { breakfast: null, lunch: null, dinner: null } });
+
+/** Days in a range that have anything on them at all, oldest first. */
+async function readPlan(ctx, me, start, end, friendIds) {
+  const [rows, notes] = await Promise.all([
+    ctx.db
+      .prepare('SELECT * FROM plan_entries WHERE user_id=? AND date>=? AND date<=? ORDER BY date')
+      .bind(me.id, start, end)
+      .all(),
+    ctx.db
+      .prepare('SELECT date, note FROM plan_notes WHERE user_id=? AND date>=? AND date<=?')
+      .bind(me.id, start, end)
+      .all(),
+  ]);
+
+  const byDate = new Map();
+  const dayOf = (date) => {
+    if (!byDate.has(date)) byDate.set(date, emptyDay(date));
+    return byDate.get(date);
+  };
+  await Promise.all(
+    rows.results.map(async (r) => {
+      dayOf(r.date).meals[r.meal] = {
+        type: r.type,
+        text: r.text,
+        recipe: r.type === 'recipe' ? await planRecipe(ctx, r.recipe_id, me.id, friendIds) : null,
+      };
+    })
+  );
+  for (const n of notes.results) dayOf(n.date).note = n.note || '';
+  return [...byDate.values()].sort((a, b) => a.date.localeCompare(b.date));
+}
+
+/** Read one meal off a write body into the columns it's stored in. */
+async function planMeal(ctx, d, myId, friendIds) {
+  if (d && d.type === 'recipe') {
+    const r = await planRecipe(ctx, d.recipeId, myId, friendIds);
+    if (!r) throw new HttpError(404, 'That recipe is not in your book');
+    return { type: 'recipe', recipe_id: r.id, text: null };
+  }
+  if (d && d.type === 'leftovers') return { type: 'leftovers', recipe_id: null, text: null };
+  if (d && d.type === 'text') {
+    const t = String(d.text || '').trim();
+    if (!t) throw new HttpError(400, 'Type something first');
+    return { type: 'text', recipe_id: null, text: t.slice(0, 120) };
+  }
+  throw new HttpError(400, 'Unknown plan entry');
+}
+
 get('/api/plan', async (ctx) => {
   const me = requireUser(ctx);
   const url = new URL(ctx.request.url);
   const start = requireDate(url.searchParams.get('start'));
   const end = requireDate(url.searchParams.get('end'));
-  const { results } = await ctx.db
-    .prepare('SELECT * FROM plan_entries WHERE user_id=? AND date>=? AND date<=? ORDER BY date')
-    .bind(me.id, start, end)
-    .all();
   const friendIds = await friendIdsOf(ctx.db, me.id);
-  const entries = await Promise.all(
-    results.map(async (e) => ({
-      date: e.date,
-      type: e.type,
-      text: e.text,
-      note: e.note || '',
-      recipe: e.type === 'recipe' ? await planRecipe(ctx, e.recipe_id, me.id, friendIds) : null,
-    }))
-  );
-  return json({ entries });
+  return json({ entries: await readPlan(ctx, me, start, end, friendIds) });
 }, KEY);
 
-// Upsert one day. Send `dinner` to set or clear the meal, `note` to set or
-// clear the note; omit either to leave it as it is.
+// Upsert one day. Send `breakfast`, `lunch` or `dinner` to set or clear that
+// meal, `note` to set or clear the note; omit any of them to leave as is.
 put('/api/plan/:date', async (ctx) => {
   const me = requireUser(ctx);
   const date = requireDate(ctx.params.date);
   const body = await ctx.json();
-  const existing = await ctx.db
-    .prepare('SELECT * FROM plan_entries WHERE user_id=? AND date=?')
-    .bind(me.id, date)
-    .first();
+  const friendIds = await friendIdsOf(ctx.db, me.id);
+  const now = nowIso();
 
-  let { type = null, recipe_id = null, text = null } = existing || {};
-  if ('dinner' in body) {
-    const d = body.dinner;
-    if (d === null) {
-      type = recipe_id = text = null;
-    } else if (d && d.type === 'recipe') {
-      const friendIds = await friendIdsOf(ctx.db, me.id);
-      const r = await planRecipe(ctx, d.recipeId, me.id, friendIds);
-      if (!r) throw new HttpError(404, 'That recipe is not in your book');
-      type = 'recipe';
-      recipe_id = r.id;
-      text = null;
-    } else if (d && d.type === 'leftovers') {
-      type = 'leftovers';
-      recipe_id = null;
-      text = null;
-    } else if (d && d.type === 'text') {
-      const t = String(d.text || '').trim();
-      if (!t) throw new HttpError(400, 'Type something first');
-      type = 'text';
-      recipe_id = null;
-      text = t.slice(0, 120);
-    } else {
-      throw new HttpError(400, 'Unknown plan entry');
+  for (const meal of MEALS) {
+    if (!(meal in body)) continue;
+    if (body[meal] === null) {
+      await ctx.db
+        .prepare('DELETE FROM plan_entries WHERE user_id=? AND date=? AND meal=?')
+        .bind(me.id, date, meal)
+        .run();
+      continue;
     }
-  }
-
-  const note = 'note' in body ? String(body.note || '').trim().slice(0, 200) : existing?.note || '';
-
-  if (!type && !note) {
-    await ctx.db.prepare('DELETE FROM plan_entries WHERE user_id=? AND date=?').bind(me.id, date).run();
-  } else {
+    const m = await planMeal(ctx, body[meal], me.id, friendIds);
     await ctx.db
       .prepare(
-        `INSERT INTO plan_entries (user_id,date,type,recipe_id,text,note,updated_at) VALUES (?,?,?,?,?,?,?)
-         ON CONFLICT(user_id,date) DO UPDATE SET type=excluded.type, recipe_id=excluded.recipe_id,
-           text=excluded.text, note=excluded.note, updated_at=excluded.updated_at`
+        `INSERT INTO plan_entries (user_id,date,meal,type,recipe_id,text,updated_at) VALUES (?,?,?,?,?,?,?)
+         ON CONFLICT(user_id,date,meal) DO UPDATE SET type=excluded.type, recipe_id=excluded.recipe_id,
+           text=excluded.text, updated_at=excluded.updated_at`
       )
-      .bind(me.id, date, type, recipe_id, text, note || null, nowIso())
+      .bind(me.id, date, meal, m.type, m.recipe_id, m.text, now)
       .run();
   }
 
-  const friendIds = await friendIdsOf(ctx.db, me.id);
-  return json({
-    entry: { date, type, text, note, recipe: type === 'recipe' ? await planRecipe(ctx, recipe_id, me.id, friendIds) : null },
-  });
+  if ('note' in body) {
+    const note = String(body.note || '').trim().slice(0, 200);
+    if (note) {
+      await ctx.db
+        .prepare(
+          `INSERT INTO plan_notes (user_id,date,note,updated_at) VALUES (?,?,?,?)
+           ON CONFLICT(user_id,date) DO UPDATE SET note=excluded.note, updated_at=excluded.updated_at`
+        )
+        .bind(me.id, date, note, now)
+        .run();
+    } else {
+      await ctx.db.prepare('DELETE FROM plan_notes WHERE user_id=? AND date=?').bind(me.id, date).run();
+    }
+  }
+
+  const [entry] = await readPlan(ctx, me, date, date, friendIds);
+  return json({ entry: entry || emptyDay(date) });
 }, KEY);
 
 // ---------- pantry ----------

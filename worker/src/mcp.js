@@ -8,7 +8,7 @@
 // The tools don't touch the database. Each one calls the same route handlers
 // the web app uses, so permissions, validation and shapes can never drift
 // between the two.
-import { HttpError, json, PANTRY_LOCATIONS, pantrySkip, GROCERY_SECTIONS, grocerySection } from './util.js';
+import { HttpError, json, PANTRY_LOCATIONS, pantrySkip, GROCERY_SECTIONS, grocerySection, MEALS } from './util.js';
 
 const PROTOCOL_VERSION = '2025-06-18';
 const SERVER_INFO = { name: 'recipe-book', title: 'Recipe Book', version: '1.0.0' };
@@ -69,19 +69,25 @@ const detail = (r) => ({
   comments: r.comments.map((c) => ({ from: c.author.name, text: c.text })),
 });
 
-const dinnerOf = (e) => {
-  if (e.type === 'recipe') {
-    // The plan keeps the day but drops the link when a recipe is deleted or
-    // its owner is unfriended — say so rather than reporting an empty night.
-    if (!e.recipe) return { type: 'recipe', unavailable: 'That recipe is no longer in your book' };
-    return { type: 'recipe', recipeId: e.recipe.id, title: e.recipe.title, owner: e.recipe.ownerName, servings: e.recipe.servings };
+const mealOf = (m) => {
+  if (!m) return undefined;
+  if (m.type === 'recipe') {
+    // The plan keeps the slot but drops the link when a recipe is deleted or
+    // its owner is unfriended — say so rather than reporting an empty meal.
+    if (!m.recipe) return { type: 'recipe', unavailable: 'That recipe is no longer in your book' };
+    return { type: 'recipe', recipeId: m.recipe.id, title: m.recipe.title, owner: m.recipe.ownerName, servings: m.recipe.servings };
   }
-  if (e.type === 'leftovers') return { type: 'leftovers' };
-  if (e.type === 'text') return { type: 'text', text: e.text };
-  return null;
+  if (m.type === 'leftovers') return { type: 'leftovers' };
+  if (m.type === 'text') return { type: 'text', text: m.text };
+  return undefined;
 };
 
-const planDay = (e) => ({ date: e.date, dinner: dinnerOf(e), note: e.note || undefined });
+// Meals with nothing planned are left out rather than reported as null
+const planDay = (e) => ({
+  date: e.date,
+  ...Object.fromEntries(MEALS.map((meal) => [meal, mealOf(e.meals[meal])]).filter(([, v]) => v)),
+  note: e.note || undefined,
+});
 
 const pantryItem = (i) => ({
   itemId: i.id,
@@ -232,7 +238,8 @@ const TOOLS = [
   {
     name: 'get_meal_plan',
     title: 'Read the meal plan',
-    description: 'What is planned for dinner across a date range, one entry per planned day. Days with nothing planned are simply absent.',
+    description:
+      'What is planned to eat across a date range — breakfast, lunch and dinner, one entry per planned day. Meals with nothing planned are left out, and days with nothing at all are simply absent.',
     inputSchema: {
       type: 'object',
       properties: {
@@ -251,28 +258,33 @@ const TOOLS = [
     name: 'set_meal_plan_day',
     title: 'Plan a day',
     description:
-      'Set or clear what is for dinner on one day, and/or its note. Omit a field to leave it alone; pass dinner: null to clear the meal. Recipes must already be in your book or a friend’s.',
+      'Set or clear any of breakfast, lunch and dinner on one day, and/or its note. Omit a meal to leave it alone; pass null to clear it. Recipes must already be in your book or a friend’s.',
     inputSchema: {
       type: 'object',
       properties: {
         date: { type: 'string', description: 'The day, YYYY-MM-DD' },
-        dinner: {
-          type: ['object', 'null'],
-          description: 'What is for dinner, or null to clear it',
-          properties: {
-            type: { type: 'string', enum: ['recipe', 'leftovers', 'text'] },
-            recipeId: { type: 'string', description: 'Required when type is "recipe"' },
-            text: { type: 'string', description: 'Required when type is "text" — e.g. "Takeout"' },
-          },
-          required: ['type'],
-        },
+        ...Object.fromEntries(
+          MEALS.map((meal) => [
+            meal,
+            {
+              type: ['object', 'null'],
+              description: `What is for ${meal}, or null to clear it`,
+              properties: {
+                type: { type: 'string', enum: ['recipe', 'leftovers', 'text'] },
+                recipeId: { type: 'string', description: 'Required when type is "recipe"' },
+                text: { type: 'string', description: 'Required when type is "text" — e.g. "Takeout"' },
+              },
+              required: ['type'],
+            },
+          ])
+        ),
         note: { type: 'string', description: 'A note for the day; pass an empty string to clear it' },
       },
       required: ['date'],
     },
     run: async (call, args) => {
       const body = {};
-      if ('dinner' in args) body.dinner = args.dinner;
+      for (const meal of MEALS) if (meal in args) body[meal] = args[meal];
       if ('note' in args) body.note = args.note;
       const { entry } = await call('PUT', `/api/plan/${encodeURIComponent(args.date)}`, body);
       return planDay(entry);
@@ -400,7 +412,7 @@ const TOOLS = [
     name: 'grocery_list',
     title: 'Build a grocery list',
     description:
-      'Everything to buy for a date range: the ingredients of the recipes planned in it, minus anything already in the kitchen, plus whatever was added by hand. Each line carries the aisle it belongs to. Quantities are left exactly as the recipes write them — nothing is combined or converted.',
+      'Everything to buy for a date range: the ingredients of every recipe planned in it — breakfast, lunch and dinner — minus anything already in the kitchen, plus whatever was added by hand. Each line carries the aisle it belongs to. Quantities are left exactly as the recipes write them — nothing is combined or converted.',
     inputSchema: {
       type: 'object',
       properties: {
@@ -417,23 +429,24 @@ const TOOLS = [
         call('GET', '/api/groceries'),
       ]);
       const skipped = new Map();
-      const fromRecipes = entries
-        .filter((e) => e.recipe)
-        .map((e) => {
-          const ingredients = e.recipe.ing
+      const planned = entries.flatMap((e) => MEALS.map((meal) => ({ date: e.date, meal, m: e.meals[meal] })).filter((x) => x.m));
+      const fromRecipes = planned
+        .filter((x) => x.m.recipe)
+        .map(({ date, meal, m }) => {
+          const ingredients = m.recipe.ing
             .filter((line) => {
               const have = pantrySkip(line, pantry);
               if (have) skipped.set(line, have.location);
               return !have;
             })
             .map((line) => ({ ingredient: line, section: grocerySection(line) }));
-          return { date: e.date, recipeId: e.recipe.id, title: e.recipe.title, servings: e.recipe.servings, ingredients };
+          return { date, meal, recipeId: m.recipe.id, title: m.recipe.title, servings: m.recipe.servings, ingredients };
         });
-      // Nights that are takeout, leftovers or a plain note have no ingredients
+      // Meals that are takeout, leftovers or a plain note have no ingredients
       // but still belong in the answer — they're meals you don't shop for.
-      const noIngredients = entries
-        .filter((e) => e.type && !e.recipe)
-        .map((e) => ({ date: e.date, dinner: dinnerOf(e) }));
+      const noIngredients = planned
+        .filter((x) => !x.m.recipe)
+        .map(({ date, meal, m }) => ({ date, meal, planned: mealOf(m) }));
       return {
         start: args.start,
         end: args.end,
@@ -477,7 +490,7 @@ async function handleMessage(message, call) {
         instructions:
           'Recipe Book is a small, invite-only recipe collection shared between family and friends. ' +
           'Recipes belong to people: you can read and plan with anyone’s, but only edit your own. ' +
-          'Dates are always YYYY-MM-DD in the planner. ' +
+          'Dates are always YYYY-MM-DD in the planner, and each day has a breakfast, a lunch and a dinner. ' +
           'The pantry is what the member already has in the kitchen; the grocery list leaves those ingredients out, ' +
           'and anything added to the list by hand sits alongside the plan’s ingredients.',
       });

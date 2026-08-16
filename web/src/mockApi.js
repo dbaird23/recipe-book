@@ -1,7 +1,7 @@
 // In-browser API for the static demo build (GitHub Pages). Same interface as
 // the real api client, backed by localStorage — single-player, no server.
 import { DEMO_MY_RECIPES, DEMO_FRIENDS, DEMO_PANTRY } from './demoData.js';
-import { autoNut, parsePantryEntry, grocerySection, GROCERY_SECTIONS } from './util.js';
+import { autoNut, parsePantryEntry, grocerySection, GROCERY_SECTIONS, MEAL_SLOTS } from './util.js';
 
 const KEY = 'recipe-book-demo-v1';
 const uid = () => (crypto.randomUUID ? crypto.randomUUID() : String(Math.random()).slice(2));
@@ -73,6 +73,23 @@ try {
   state = JSON.parse(localStorage.getItem(KEY));
 } catch {
   /* corrupted storage — reseed on sign-in */
+}
+
+// Demo state saved before breakfast and lunch existed kept one dinner per day
+if (Array.isArray(state?.plan)) {
+  state.plan = state.plan.map((e) =>
+    e.meals
+      ? e
+      : {
+          date: e.date,
+          note: e.note || '',
+          meals: {
+            breakfast: null,
+            lunch: null,
+            dinner: e.type ? { type: e.type, text: e.text || null, recipeId: e.recipeId || null } : null,
+          },
+        }
+  );
 }
 
 function save() {
@@ -269,23 +286,45 @@ export const mockApi = {
   plan: async (start, end) => {
     const entries = (state.plan || [])
       .filter((e) => e.date >= start && e.date <= end)
-      .map((e) => ({ ...e, recipe: e.type === 'recipe' ? planRecipeOf(e.recipeId) : null }));
+      .map((e) => ({
+        date: e.date,
+        note: e.note || '',
+        meals: Object.fromEntries(
+          MEAL_SLOTS.map(({ key }) => {
+            const m = e.meals[key];
+            return [key, m ? { ...m, recipe: m.type === 'recipe' ? planRecipeOf(m.recipeId) : null } : null];
+          })
+        ),
+      }));
     return { entries };
   },
   setPlanDay: async (date, body) => {
     state.plan = state.plan || [];
-    const prev = state.plan.find((e) => e.date === date) || { date, type: null, text: null, note: '', recipeId: null };
-    if ('dinner' in body) {
-      const d = body.dinner;
-      prev.type = d?.type || null;
-      prev.recipeId = d?.type === 'recipe' ? d.recipeId : null;
-      prev.text = d?.type === 'text' ? d.text : null;
+    const prev = state.plan.find((e) => e.date === date) || {
+      date, note: '', meals: { breakfast: null, lunch: null, dinner: null },
+    };
+    for (const { key } of MEAL_SLOTS) {
+      if (!(key in body)) continue;
+      const d = body[key];
+      prev.meals[key] = d ? { type: d.type, text: d.type === 'text' ? d.text : null, recipeId: d.type === 'recipe' ? d.recipeId : null } : null;
     }
     if ('note' in body) prev.note = String(body.note || '').trim();
     state.plan = state.plan.filter((e) => e.date !== date);
-    if (prev.type || prev.note) state.plan.push(prev);
+    const anything = prev.note || MEAL_SLOTS.some(({ key }) => prev.meals[key]);
+    if (anything) state.plan.push(prev);
     save();
-    return { entry: { ...prev, recipe: prev.type === 'recipe' ? planRecipeOf(prev.recipeId) : null } };
+    return {
+      entry: {
+        date: prev.date,
+        note: prev.note,
+        meals: Object.fromEntries(
+          MEAL_SLOTS.map(({ key }) => {
+            const m = prev.meals[key];
+            return [key, m ? { ...m, recipe: m.type === 'recipe' ? planRecipeOf(m.recipeId) : null } : null];
+          })
+        ),
+      },
+    };
   },
 
   pantry: async () => ({ items: state.pantry || [] }),

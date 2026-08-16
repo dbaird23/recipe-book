@@ -13,9 +13,16 @@ export function avatarColor(user) {
   return AVATAR_COLORS[h % AVATAR_COLORS.length];
 }
 
+/** 65 → "1 hr 5 min", 120 → "2 hr", 40 → "40 min" */
+export function formatMinutes(m) {
+  const t = Math.max(0, Math.round(m || 0));
+  if (t < 60) return `${t} min`;
+  const h = Math.floor(t / 60);
+  return t % 60 ? `${h} hr ${t % 60} min` : `${h} hr`;
+}
+
 export function metaOf(r) {
-  const t = (r.prep || 0) + (r.cook || 0);
-  const time = t >= 60 ? (t % 60 ? `${Math.floor(t / 60)} hr ${t % 60} min` : `${Math.floor(t / 60)} hr`) : `${t} min`;
+  const time = formatMinutes((r.prep || 0) + (r.cook || 0));
   return `${time} · ${r.servings}${r.servings === 1 ? ' serving' : ' servings'}${r.from ? ` · from ${r.from}` : ''}`;
 }
 

@@ -1,6 +1,6 @@
 import { useRef, useState } from 'react';
 import { Avatar, Photo, Stars } from '../components.jsx';
-import { autoNut, scaleIngredient } from '../util.js';
+import { autoNut, scaleIngredient, formatMinutes } from '../util.js';
 
 function SectionLabel({ children, style }) {
   return <div className="section-label" style={{ margin: '22px 0 10px', ...style }}>{children}</div>;
@@ -26,7 +26,6 @@ export default function Recipe({
 
   const photos = recipe.photos || [];
   const hero = photos[Math.min(photoIdx, Math.max(photos.length - 1, 0))];
-  const cookLabel = recipe.cook >= 60 ? `${Math.round((recipe.cook / 60) * 10) / 10} hr` : `${recipe.cook} min`;
   const ownerLine = [
     recipe.source ? `By ${recipe.source}` : null,
     isMine ? (recipe.from ? `Saved from ${recipe.from}` : `Added by ${user.name}`) : `Added by ${recipe.ownerName}`,
@@ -145,7 +144,7 @@ export default function Recipe({
         )}
 
         <div style={{ display: 'flex', gap: 8, marginTop: 12 }}>
-          {[['PREP', `${recipe.prep} min`], ['COOK', cookLabel], ['SERVES', recipe.servings * mult]].map(([k, v]) => (
+          {[['PREP', formatMinutes(recipe.prep)], ['COOK', formatMinutes(recipe.cook)], ['SERVES', recipe.servings * mult]].map(([k, v]) => (
             <div key={k} className="stat-card">
               <div style={{ fontSize: 11, color: 'var(--label)', fontWeight: 600 }}>{k}</div>
               <div style={{ fontSize: 15, fontWeight: 600, marginTop: 2, color: k === 'SERVES' && mult > 1 ? 'var(--green)' : undefined }}>

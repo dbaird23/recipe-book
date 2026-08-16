@@ -284,6 +284,180 @@ export function scaleIngredient(txt, mult) {
   return out + txt.slice(m[0].length);
 }
 
+// ---- grocery list ----
+
+/** The aisles, in the order you walk them. Mirrored in worker/src/util.js. */
+export const GROCERY_SECTIONS = [
+  { key: 'produce', label: 'Produce' },
+  { key: 'meat', label: 'Meat & seafood' },
+  { key: 'dairy', label: 'Dairy & eggs' },
+  { key: 'bakery', label: 'Bakery' },
+  { key: 'frozen', label: 'Freezer' },
+  { key: 'pantry', label: 'Pantry' },
+  { key: 'drinks', label: 'Drinks' },
+  { key: 'household', label: 'Household' },
+  { key: 'other', label: 'Other' },
+];
+
+// First match wins, so the exceptions sit above the general rules — "chicken
+// broth" is a pantry shelf, not the meat counter, and "dried dill" is a spice
+// jar rather than a bunch of herbs. Like pantrySkip this is deliberately loose:
+// a mis-filed line costs you a few steps in the shop, and anything it doesn't
+// recognise lands in "Other" rather than somewhere confidently wrong.
+const AISLE_RULES = [
+  ['frozen', /\bfrozen\b|\bice creams?\b|\bpopsicles?\b|\bice\b/],
+  ['bakery', /\bbreads?\b|\bbaguettes?\b|\bbuns?\b|\brolls?\b|\btortillas?\b|\bpitas?\b|\bnaan\b|\bbagels?\b|\bcroissants?\b|\benglish muffins?\b|\bpie crusts?\b/],
+  ['pantry', /\b(?:broth|stock|bouillon)\b|\b(?:peanut|almond) butter\b|\bcoconut (?:milk|cream)\b|\b(?:evaporated|condensed|powdered) milk\b|\bcream of (?:tartar|\w+ soup)\b|\begg noodles\b|\bcans?\b|\bcanned\b|\bjarred\b|\bdried\b|\bground (?:ginger|cinnamon|nutmeg|cloves?|mustard|coriander|allspice|pepper)\b|\btomato (?:paste|sauce|puree)\b|\b(?:black|white) pepper\b|\bpeppercorns?\b|\bred pepper flakes\b|\bsalt and pepper\b|\bcorn(?:starch|meal|\s+syrup)\b|\bchocolates?\b|\bcocoa\b/],
+  ['dairy', /\bmilk\b|\bbuttermilk\b|\bcreams?\b|\bhalf.and.half\b|\bbutter\b|\bmargarine\b|\bcheeses?\b|\bcheddar\b|\bmozzarella\b|\bparmesan\b|\bpecorino\b|\bfeta\b|\bricotta\b|\bgouda\b|\bbrie\b|\bswiss\b|\bmonterey jack\b|\byogh?urts?\b|\beggs?\b|\bghee\b/],
+  ['meat', /\bchickens?\b|\bbeef\b|\bsteaks?\b|\bpork\b|\bbacon\b|\bsausages?\b|\bturkey\b|\blamb\b|\bveal\b|\bham\b|\bprosciutto\b|\bpepperoni\b|\bchorizo\b|\bribs?\b|\bbrisket\b|\bsalmon\b|\bshrimps?\b|\bprawns?\b|\bfish\b|\btunas?\b|\bcod\b|\btilapia\b|\bhalibut\b|\bscallops?\b|\bcrab\b|\blobster\b|\bmussels\b|\bclams\b|\btofu\b/],
+  ['produce', /\bonions?\b|\bscallions?\b|\bshallots?\b|\bgarlic\b|\bgingers?\b|\btomato(?:es)?\b|\bpotato(?:es)?\b|\bsweet potato(?:es)?\b|\bcarrots?\b|\bcelery\b|\blettuce\b|\bromaine\b|\bspinach\b|\bkale\b|\barugula\b|\bgreens\b|\bcabbage\b|\bbroccoli\b|\bcauliflower\b|\bzucchini\b|\bsquash\b|\bcucumbers?\b|\bbell peppers?\b|\b(?:red|green|yellow|orange|poblano|banana|chil[il]) peppers?\b|\bpeppers\b|\bjalape[nñ]os?\b|\bmushrooms?\b|\bgreen beans?\b|\bpeas\b|\bsnap peas\b|\bcorn\b|\basparagus\b|\bavocados?\b|\blemons?\b|\blimes?\b|\boranges?\b|\bapples?\b|\bbananas?\b|\bberries\b|\bgrapes\b|\bmelon\b|\bpineapple\b|\bmango(?:es)?\b|\bpears?\b|\bpeach(?:es)?\b|\bherbs?\b|\bbasil\b|\bparsley\b|\bcilantro\b|\bdill\b|\bmint\b|\bthyme\b|\brosemary\b|\bsage\b|\bchives\b|\bleeks?\b|\bradish(?:es)?\b|\bbeets?\b|\bbrussels sprouts\b|\bsalad\b|\bsprouts?\b/],
+  ['drinks', /\bwines?\b|\bbeers?\b|\bsodas?\b|\bjuices?\b|\bcoffee\b|\bteas?\b|\bseltzer\b|\bsparkling water\b/],
+  ['household', /\bfoil\b|\bparchment\b|\bplastic wrap\b|\bpaper towels?\b|\bnapkins?\b|\btoothpicks?\b|\bskewers?\b|\btrash bags?\b|\bstorage bags?\b|\bziplocs?\b|\bdish soap\b|\bsponges?\b|\bbatteries\b/],
+  ['pantry', /\bflour\b|\bsugars?\b|\brice\b|\bpastas?\b|\bspaghetti\b|\bpenne\b|\bmacaroni\b|\bnoodles?\b|\bbeans?\b|\blentils?\b|\bchickpeas\b|\bquinoa\b|\boils?\b|\bvinegars?\b|\bsalt\b|\bspices?\b|\bcumin\b|\bpaprika\b|\boregano\b|\bcinnamon\b|\bnutmeg\b|\bturmeric\b|\bcurry\b|\bchili powder\b|\bcayenne\b|\bbay leaf|\bsoy sauce\b|\bhot sauce\b|\bworcestershire\b|\bketchup\b|\bmustard\b|\bmayo(?:nnaise)?\b|\bsalsa\b|\bhoney\b|\bsyrups?\b|\bjams?\b|\bjell(?:y|ies)\b|\bbaking (?:powder|soda)\b|\bvanilla\b|\bextracts?\b|\byeast\b|\boats?\b|\bcereals?\b|\bcrackers?\b|\bchips?\b|\bnuts?\b|\balmonds?\b|\bwalnuts?\b|\bpecans?\b|\bcashews?\b|\braisins\b|\bbreadcrumbs\b|\bpanko\b|\bsesame\b|\bcoconut\b|\btahini\b|\bhummus\b|\bmolasses\b|\bshortening\b|\bcooking spray\b|\bcapers\b|\bolives\b|\bpickles?\b|\bsauces?\b|\bpastes?\b/],
+];
+
+/** Which aisle a line belongs in. Mirrored in worker/src/util.js. */
+export function grocerySection(text) {
+  const t = String(text ?? '').toLowerCase();
+  for (const [section, re] of AISLE_RULES) if (re.test(t)) return section;
+  return 'other';
+}
+
+// Measures we'll lift off the front of an ingredient line. Cuts of meat
+// ("breasts", "thighs") are deliberately absent: dropping those would merge
+// chicken breasts with chicken thighs into one line you can't shop from.
+const ING_UNITS = new Set([
+  'cup', 'cups', 'c', 'tbsp', 'tablespoon', 'tablespoons', 'tsp', 'teaspoon', 'teaspoons',
+  'oz', 'ounce', 'ounces', 'lb', 'lbs', 'pound', 'pounds', 'g', 'gram', 'grams', 'kg',
+  'ml', 'l', 'liter', 'liters', 'quart', 'quarts', 'pint', 'pints', 'gallon', 'gallons',
+  'clove', 'cloves', 'can', 'cans', 'jar', 'jars', 'package', 'packages', 'pkg', 'bag',
+  'bags', 'box', 'boxes', 'bunch', 'bunches', 'head', 'heads', 'stick', 'sticks', 'slice',
+  'slices', 'sprig', 'sprigs', 'stalk', 'stalks', 'pinch', 'pinches', 'dash', 'handful',
+  'loaf', 'loaves', 'bottle', 'bottles', 'container', 'containers', 'piece', 'pieces',
+]);
+
+/** "2 cloves garlic, minced" → { amount: '2 cloves', name: 'garlic, minced' } */
+export function splitIngredient(line) {
+  const whole = String(line ?? '').trim();
+  const m = whole.match(LEADING_QTY);
+  if (!m || !m[1]) return { amount: '', name: whole };
+  let amount = m[0].trim();
+  let rest = whole.slice(m[0].length).trim();
+  const word = rest.match(/^([A-Za-z]+)\.?\s+(.*)$/);
+  if (word && ING_UNITS.has(word[1].toLowerCase())) {
+    amount += ` ${word[1]}`;
+    rest = word[2].trim();
+  }
+  rest = rest.replace(/^of\s+/i, '');
+  return { amount, name: rest || whole };
+}
+
+// Everything a cook writes about *what to do* with an ingredient rather than
+// what to buy — dropped so two recipes' wording lands on one line.
+const PREP_WORDS =
+  /\b(?:fresh|freshly|large|small|medium|ripe|finely|coarsely|roughly|thinly|chopped|minced|diced|sliced|shredded|grated|crushed|drained|rinsed|packed|softened|melted|beaten|divided|optional|halved|quartered|cubed|trimmed|peeled)\b/g;
+
+// Plural → singular, but only where it's safe: "tomatoes" and "cloves" fold,
+// "hummus" and "molasses" don't.
+const singular = (w) => {
+  if (w.length > 4 && /(?:oes|ches|shes|sses)$/.test(w)) return w.replace(/es$/, '');
+  if (w.length > 3 && /[^su]s$/.test(w)) return w.slice(0, -1);
+  return w;
+};
+
+/** What two ingredient lines have to agree on to count as the same shopping item. */
+const mergeKey = (name) =>
+  name
+    .toLowerCase()
+    .replace(/\([^)]*\)/g, ' ')
+    .split(',')[0]
+    .replace(PREP_WORDS, ' ')
+    .replace(/[^a-z ]/g, ' ')
+    .trim()
+    .split(/\s+/)
+    .map(singular)
+    .join(' ');
+
+/** The name as it reads on a list: no bracketed asides, no "…, minced". */
+const shoppingName = (name) => name.replace(/\([^)]*\)/g, ' ').split(',')[0].replace(/\s+/g, ' ').trim();
+
+const capitalize = (s) => (s ? s[0].toUpperCase() + s.slice(1) : s);
+
+/**
+ * The week's shopping, laid out the way a shop is: by aisle rather than by
+ * day, with an ingredient that several dinners need collapsed onto one line
+ * that remembers which recipes wanted it. Anything the pantry already covers
+ * is dropped, and every drop is handed back in `skipped` — a loose name match
+ * will occasionally lose something you did need.
+ */
+export function buildGroceryList({ entries, weekOffset, pantry = [], manual = [] }) {
+  const skippedByText = new Map();
+  const rows = new Map();
+
+  DAY_NAMES.forEach((dayName, i) => {
+    const date = isoDate(addDays(mondayOf(weekOffset), i));
+    const entry = entries.find((e) => e.date === date);
+    if (!entry?.recipe) return;
+    for (const text of entry.recipe.ing) {
+      const have = pantrySkip(text, pantry);
+      if (have) {
+        skippedByText.set(text, have.location);
+        continue;
+      }
+      const { amount, name } = splitIngredient(text);
+      const key = mergeKey(name) || text.toLowerCase();
+      const source = { recipeId: entry.recipe.id, title: entry.recipe.title, dayName, date };
+      const row = rows.get(key);
+      if (row) {
+        row.sources.push(source);
+        row.amounts.push(amount);
+      } else {
+        rows.set(key, {
+          key: `ing:${key}`,
+          text,
+          name: shoppingName(name),
+          amounts: [amount],
+          sources: [source],
+          section: grocerySection(text),
+        });
+      }
+    }
+  });
+
+  const items = [...rows.values()].map((row) => ({
+    key: row.key,
+    // One recipe: its own wording, quantity and all. Several: the ingredient
+    // itself, with the amounts each recipe asked for beside it.
+    label: row.sources.length > 1 ? capitalize(row.name) : row.text,
+    amounts: row.sources.length > 1 ? row.amounts.filter(Boolean) : [],
+    sources: row.sources,
+    section: row.section,
+    manualId: null,
+  }));
+
+  for (const m of manual) {
+    items.push({
+      key: `man:${m.id}`,
+      label: m.text,
+      amounts: [],
+      sources: [],
+      section: GROCERY_SECTIONS.some((s) => s.key === m.section) ? m.section : 'other',
+      manualId: m.id,
+    });
+  }
+
+  const sections = GROCERY_SECTIONS.map((s) => ({
+    ...s,
+    items: items.filter((it) => it.section === s.key),
+  })).filter((s) => s.items.length);
+
+  return {
+    sections,
+    total: items.length,
+    skipped: [...skippedByText].map(([text, location]) => ({ text, location })),
+  };
+}
+
 // Tags people created themselves, beyond the built-in meal/tag chips
 export function customTagsFrom(recipes) {
   const standard = new Set([...MEALS, ...TAGS]);

@@ -8,7 +8,7 @@
 // The tools don't touch the database. Each one calls the same route handlers
 // the web app uses, so permissions, validation and shapes can never drift
 // between the two.
-import { HttpError, json, PANTRY_LOCATIONS, pantrySkip } from './util.js';
+import { HttpError, json, PANTRY_LOCATIONS, pantrySkip, GROCERY_SECTIONS, grocerySection } from './util.js';
 
 const PROTOCOL_VERSION = '2025-06-18';
 const SERVER_INFO = { name: 'recipe-book', title: 'Recipe Book', version: '1.0.0' };
@@ -92,6 +92,13 @@ const pantryItem = (i) => ({
 });
 
 const LOCATION = { type: 'string', enum: PANTRY_LOCATIONS, description: 'Where it lives in the kitchen' };
+
+const SECTION_KEYS = GROCERY_SECTIONS.map((s) => s.key);
+const SECTION = {
+  type: 'string',
+  enum: SECTION_KEYS,
+  description: 'Which aisle it is filed under. Leave it out and it will be guessed from the text.',
+};
 
 function matches(recipe, q) {
   const haystack = [recipe.title, ...recipe.tags, ...recipe.ing].join(' ').toLowerCase();
@@ -355,10 +362,45 @@ const TOOLS = [
   },
 
   {
+    name: 'add_grocery_item',
+    title: 'Add to the grocery list',
+    description:
+      'Put something on the grocery list by hand — anything the meal plan wouldn’t know about. It sits alongside the week’s ingredients until it is removed.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        item: { type: 'string', description: 'A whole line, e.g. "2 bags of ice" or "birthday candles"' },
+        section: SECTION,
+      },
+      required: ['item'],
+    },
+    run: async (call, args) => {
+      const { item } = await call('POST', '/api/groceries', { text: args.item, section: args.section });
+      return { added: true, itemId: item.id, text: item.text, section: item.section };
+    },
+  },
+
+  {
+    name: 'remove_grocery_item',
+    title: 'Take something off the grocery list',
+    description:
+      'Remove a hand-added grocery item. Ingredients that come from the meal plan cannot be removed this way — change the plan or the pantry instead.',
+    inputSchema: {
+      type: 'object',
+      properties: { itemId: { type: 'string' } },
+      required: ['itemId'],
+    },
+    run: async (call, args) => {
+      await call('DELETE', `/api/groceries/${encodeURIComponent(args.itemId)}`);
+      return { removed: true, itemId: args.itemId };
+    },
+  },
+
+  {
     name: 'grocery_list',
     title: 'Build a grocery list',
     description:
-      'Every ingredient from the recipes planned in a date range, grouped by recipe, minus anything already in the kitchen. Quantities are left exactly as the recipes write them — nothing is combined or converted.',
+      'Everything to buy for a date range: the ingredients of the recipes planned in it, minus anything already in the kitchen, plus whatever was added by hand. Each line carries the aisle it belongs to. Quantities are left exactly as the recipes write them — nothing is combined or converted.',
     inputSchema: {
       type: 'object',
       properties: {
@@ -369,19 +411,22 @@ const TOOLS = [
       required: ['start', 'end'],
     },
     run: async (call, args) => {
-      const [{ entries }, { items: pantry }] = await Promise.all([
+      const [{ entries }, { items: pantry }, { items: added }] = await Promise.all([
         call('GET', `/api/plan?start=${encodeURIComponent(args.start)}&end=${encodeURIComponent(args.end)}`),
         args.ignorePantry ? Promise.resolve({ items: [] }) : call('GET', '/api/pantry'),
+        call('GET', '/api/groceries'),
       ]);
       const skipped = new Map();
       const fromRecipes = entries
         .filter((e) => e.recipe)
         .map((e) => {
-          const ingredients = e.recipe.ing.filter((line) => {
-            const have = pantrySkip(line, pantry);
-            if (have) skipped.set(line, have.location);
-            return !have;
-          });
+          const ingredients = e.recipe.ing
+            .filter((line) => {
+              const have = pantrySkip(line, pantry);
+              if (have) skipped.set(line, have.location);
+              return !have;
+            })
+            .map((line) => ({ ingredient: line, section: grocerySection(line) }));
           return { date: e.date, recipeId: e.recipe.id, title: e.recipe.title, servings: e.recipe.servings, ingredients };
         });
       // Nights that are takeout, leftovers or a plain note have no ingredients
@@ -392,8 +437,12 @@ const TOOLS = [
       return {
         start: args.start,
         end: args.end,
-        itemCount: fromRecipes.reduce((n, r) => n + r.ingredients.length, 0),
+        sections: GROCERY_SECTIONS,
+        itemCount: fromRecipes.reduce((n, r) => n + r.ingredients.length, 0) + added.length,
         recipes: fromRecipes,
+        addedByHand: added.length
+          ? added.map((i) => ({ itemId: i.id, item: i.text, section: i.section }))
+          : undefined,
         // Named so it's obvious these were dropped on purpose, not missed
         alreadyInKitchen: skipped.size
           ? [...skipped].map(([ingredient, location]) => ({ ingredient, location }))
@@ -429,7 +478,8 @@ async function handleMessage(message, call) {
           'Recipe Book is a small, invite-only recipe collection shared between family and friends. ' +
           'Recipes belong to people: you can read and plan with anyone’s, but only edit your own. ' +
           'Dates are always YYYY-MM-DD in the planner. ' +
-          'The pantry is what the member already has in the kitchen; the grocery list leaves those ingredients out.',
+          'The pantry is what the member already has in the kitchen; the grocery list leaves those ingredients out, ' +
+          'and anything added to the list by hand sits alongside the plan’s ingredients.',
       });
 
     case 'ping':

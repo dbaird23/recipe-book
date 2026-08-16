@@ -81,6 +81,10 @@ const realApi = {
   renamePantryItem: (id, text) => request(`/api/pantry/${id}`, { method: 'PATCH', body: { text } }),
   removePantryItem: (id) => request(`/api/pantry/${id}`, { method: 'DELETE' }),
   savePantryInventory: (items) => request('/api/pantry', { method: 'PUT', body: { items } }),
+
+  groceries: () => request('/api/groceries'),
+  addGroceryItem: (text, section) => request('/api/groceries', { method: 'POST', body: { text, section } }),
+  removeGroceryItem: (id) => request(`/api/groceries/${id}`, { method: 'DELETE' }),
 };
 
 export const api = DEMO ? mockApi : realApi;

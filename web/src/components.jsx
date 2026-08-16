@@ -117,7 +117,7 @@ export function Sheet({ onClose, children }) {
   );
 }
 
-/** The tick box used down the pantry shelves. */
+/** The tick box used down the pantry shelves and the grocery list. */
 export function Check({ on, style }) {
   return (
     <div
@@ -215,7 +215,14 @@ const PantryIcon = ({ color }) => (
   </svg>
 );
 
-export function TabBar({ screen, onHome, onPlan, onPantry, onFriends }) {
+const CartIcon = ({ color }) => (
+  <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+    <path d="M3 4 h2.2 l2.4 11.2 h10.2 l1.9 -7.6 H6.4" />
+    <circle cx="10" cy="19.4" r="1.5" /><circle cx="17" cy="19.4" r="1.5" />
+  </svg>
+);
+
+export function TabBar({ screen, onHome, onPlan, onGroceries, onPantry, onFriends }) {
   const fg = (s) => (screen === s ? 'var(--green)' : 'var(--label)');
   return (
     <div className="tabbar">
@@ -226,6 +233,10 @@ export function TabBar({ screen, onHome, onPlan, onPantry, onFriends }) {
       <button onClick={onPlan} style={{ color: fg('plan') }}>
         <PlanIcon color={fg('plan')} />
         Plan
+      </button>
+      <button onClick={onGroceries} style={{ color: fg('groceries') }}>
+        <CartIcon color={fg('groceries')} />
+        Groceries
       </button>
       <button onClick={onPantry} style={{ color: fg('pantry') }}>
         <PantryIcon color={fg('pantry')} />

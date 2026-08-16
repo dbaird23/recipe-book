@@ -8,8 +8,9 @@ import Recipe from './screens/Recipe.jsx';
 import { AddStep1, AddStep2 } from './screens/Add.jsx';
 import Plan from './screens/Plan.jsx';
 import Pantry from './screens/Pantry.jsx';
-import { ProfileSheet, ApiKeysSheet, FilterSheet, ShareSheet, InviteSheet, RemoveFriendSheet, PlanPickerSheet, GrocerySheet } from './sheets.jsx';
-import { matchesFilters, customTagsFrom, nextSort, pantrySkip, DAY_NAMES, mondayOf, addDays, isoDate } from './util.js';
+import Groceries from './screens/Groceries.jsx';
+import { ProfileSheet, ApiKeysSheet, FilterSheet, ShareSheet, InviteSheet, RemoveFriendSheet, PlanPickerSheet } from './sheets.jsx';
+import { matchesFilters, customTagsFrom, nextSort, buildGroceryList, mondayOf, addDays, isoDate } from './util.js';
 
 const EMPTY_FILTERS = { selMeals: [], selTags: [], query: '', rating: 0 };
 
@@ -36,21 +37,25 @@ export default function App() {
   const [draft, setDraft] = useState(null);
   const [editingId, setEditingId] = useState(null);
 
-  const [sheet, setSheet] = useState(null); // 'profile' | 'keys' | 'filter' | 'share' | 'invite' | 'remove' | 'grocery'
+  const [sheet, setSheet] = useState(null); // 'profile' | 'keys' | 'filter' | 'share' | 'invite' | 'remove'
 
   // meal plan
   const [weekOffset, setWeekOffset] = useState(0);
   const [planEntries, setPlanEntries] = useState([]);
   const [pickerDay, setPickerDay] = useState(null);
+  // Ticks stay in the browser: they're a scratchpad for one trip round the
+  // shop, not something worth a round trip while you're standing in an aisle.
   const [groceryChecked, setGroceryChecked] = useState(() => {
     try {
-      return JSON.parse(localStorage.getItem('rb-grocery') || '{}');
+      return JSON.parse(localStorage.getItem('rb-grocery-v2') || '{}');
     } catch {
       return {};
     }
   });
   // pantry — what's already in the kitchen, so the grocery list can skip it
   const [pantry, setPantry] = useState([]);
+  // groceries added by hand, alongside whatever the week's plan calls for
+  const [groceryItems, setGroceryItems] = useState([]);
 
   const [toastMsg, setToastMsg] = useState(null);
   const toastTimer = useRef(null);
@@ -62,13 +67,14 @@ export default function App() {
   }, []);
 
   const loadAll = useCallback(async () => {
-    const [mine, fr, all, kitchen] = await Promise.all([
-      api.myRecipes(), api.friends(), api.allFriendRecipes(), api.pantry(),
+    const [mine, fr, all, kitchen, list] = await Promise.all([
+      api.myRecipes(), api.friends(), api.allFriendRecipes(), api.pantry(), api.groceries(),
     ]);
     setMyRecipes(mine.recipes);
     setFriends(fr.friends);
     setAllFriendRecipes(all.recipes);
     setPantry(kitchen.items);
+    setGroceryItems(list.items);
     return mine.recipes;
   }, []);
 
@@ -122,6 +128,7 @@ export default function App() {
     setFriends([]);
     setAllFriendRecipes([]);
     setPantry([]);
+    setGroceryItems([]);
   }
 
   // Keep a mutated recipe in sync across every list that may hold it
@@ -142,7 +149,7 @@ export default function App() {
   const weekEnd = isoDate(addDays(mondayOf(weekOffset), 6));
 
   useEffect(() => {
-    if (!user || screen !== 'plan') return;
+    if (!user || (screen !== 'plan' && screen !== 'groceries')) return;
     let stale = false;
     api
       .plan(weekStart, weekEnd)
@@ -170,30 +177,84 @@ export default function App() {
     ...allFriendRecipes.map((r) => ({ ...r, ownerLabel: r.ownerName })),
   ];
 
-  // The week's shopping, minus whatever the pantry already covers. Skipped
-  // lines are collected so the sheet can show its work — a loose name match
-  // will occasionally drop something you did need.
-  const skippedByText = new Map();
-  const groceryGroups = DAY_NAMES.map((name, i) => {
-    const date = isoDate(addDays(mondayOf(weekOffset), i));
-    const entry = planEntries.find((e) => e.date === date);
-    if (!entry?.recipe) return null;
-    const items = entry.recipe.ing
-      .map((text, j) => {
-        const have = pantrySkip(text, pantry);
-        if (have) skippedByText.set(text, have.location);
-        return have ? null : { key: `${date}-${j}`, text };
-      })
-      .filter(Boolean);
-    if (!items.length) return null;
-    return { key: date, title: `${name.slice(0, 3).toUpperCase()} · ${entry.recipe.title.toUpperCase()}`, items };
-  }).filter(Boolean);
-  const grocerySkipped = [...skippedByText].map(([text, location]) => ({ text, location }));
+  // The week's shopping, by aisle: the plan's ingredients minus whatever the
+  // pantry already covers, plus anything added by hand.
+  const grocery = buildGroceryList({ entries: planEntries, weekOffset, pantry, manual: groceryItems });
+
+  async function addGroceryItem(text, section) {
+    try {
+      const { item } = await api.addGroceryItem(text, section);
+      setGroceryItems((prev) => [...prev, item]);
+    } catch (e) {
+      toast(e.message);
+    }
+  }
+
+  async function removeGroceryItem(item) {
+    try {
+      await api.removeGroceryItem(item.manualId);
+      setGroceryItems((prev) => prev.filter((x) => x.id !== item.manualId));
+    } catch (e) {
+      toast(e.message);
+    }
+  }
+
+  async function addPantryItem(location, text) {
+    try {
+      const { item } = await api.addPantryItem(location, text);
+      setPantry((prev) => [...prev, item]);
+    } catch (e) {
+      toast(e.message);
+    }
+  }
+
+  async function renamePantryItem(id, text) {
+    try {
+      const { item } = await api.renamePantryItem(id, text);
+      setPantry((prev) => prev.map((x) => (x.id === item.id ? item : x)));
+    } catch (e) {
+      toast(e.message);
+    }
+  }
+
+  async function removePantryItem(item) {
+    try {
+      await api.removePantryItem(item.id);
+      setPantry((prev) => prev.filter((x) => x.id !== item.id));
+      toast(`${item.name} removed`);
+    } catch (e) {
+      toast(e.message);
+    }
+  }
+
+  async function savePantryInventory(updates) {
+    if (!updates.length) {
+      toast('Pantry up to date');
+      return;
+    }
+    try {
+      const { items, removed } = await api.savePantryInventory(updates);
+      setPantry(items);
+      toast(removed === 0 ? 'Pantry up to date' : `${removed} ${removed === 1 ? 'item' : 'items'} removed`);
+    } catch (e) {
+      toast(e.message);
+    }
+  }
 
   function openRecipe(r, from) {
     setCurrentRecipe(r);
     setBackTo(from);
     setScreen('recipe');
+  }
+
+  // The plan and the grocery list hold recipe ids, not whole recipes
+  async function openRecipeById(id, from) {
+    try {
+      const { recipe } = await api.getRecipe(id);
+      openRecipe(recipe, from);
+    } catch (e) {
+      toast(e.message);
+    }
   }
 
   async function openFriend(f) {
@@ -287,7 +348,7 @@ export default function App() {
     );
   }
 
-  const showNav = ['home', 'friends', 'plan', 'pantry'].includes(screen);
+  const showNav = ['home', 'friends', 'plan', 'groceries', 'pantry'].includes(screen);
   const activeList = screen === 'friend' ? friendRecipes : myRecipes;
   const filterResultCount = activeList.filter((r) => matchesFilters(r, filters)).length;
   const customTags = customTagsFrom([...myRecipes, ...allFriendRecipes]);
@@ -319,15 +380,29 @@ export default function App() {
           onPick={(day) => setPickerDay(day)}
           onClear={(date) => savePlanDay(date, { dinner: null })}
           onSaveNote={(date, note) => savePlanDay(date, { note })}
-          onOpenRecipe={async (id) => {
-            try {
-              const { recipe } = await api.getRecipe(id);
-              openRecipe(recipe, 'plan');
-            } catch (e) {
-              toast(e.message);
-            }
-          }}
-          onOpenGrocery={() => setSheet('grocery')}
+          onOpenRecipe={(id) => openRecipeById(id, 'plan')}
+        />
+      )}
+
+      {screen === 'groceries' && (
+        <Groceries
+          weekOffset={weekOffset}
+          setWeekOffset={setWeekOffset}
+          sections={grocery.sections}
+          skipped={grocery.skipped}
+          total={grocery.total}
+          checked={groceryChecked}
+          onToggle={(key) =>
+            setGroceryChecked((prev) => {
+              const next = { ...prev, [key]: !prev[key] };
+              if (!next[key]) delete next[key];
+              localStorage.setItem('rb-grocery-v2', JSON.stringify(next));
+              return next;
+            })
+          }
+          onAdd={addGroceryItem}
+          onRemove={removeGroceryItem}
+          onOpenRecipe={(id) => openRecipeById(id, 'groceries')}
         />
       )}
 
@@ -377,7 +452,7 @@ export default function App() {
           user={user}
           isMine={isMine}
           savedAlready={savedAlready}
-          goBack={() => setScreen(['friend', 'friends', 'plan'].includes(backTo) ? backTo : 'home')}
+          goBack={() => setScreen(['friend', 'friends', 'plan', 'groceries'].includes(backTo) ? backTo : 'home')}
           onEdit={() => {
             setDraft({
               title: currentRecipe.title,
@@ -490,6 +565,7 @@ export default function App() {
           screen={screen}
           onHome={() => { setScreen('home'); setFilters({ ...filters, query: '' }); }}
           onPlan={() => setScreen('plan')}
+          onGroceries={() => setScreen('groceries')}
           onPantry={() => setScreen('pantry')}
           onFriends={() => { setScreen('friends'); setFilters({ ...filters, query: '' }); }}
         />
@@ -541,22 +617,6 @@ export default function App() {
         />
       )}
 
-      {sheet === 'grocery' && (
-        <GrocerySheet
-          groups={groceryGroups}
-          skipped={grocerySkipped}
-          checked={groceryChecked}
-          onToggle={(key) =>
-            setGroceryChecked((prev) => {
-              const next = { ...prev, [key]: !prev[key] };
-              if (!next[key]) delete next[key];
-              localStorage.setItem('rb-grocery', JSON.stringify(next));
-              return next;
-            })
-          }
-          onClose={() => setSheet(null)}
-        />
-      )}
       {sheet === 'remove' && currentFriend && (
         <RemoveFriendSheet
           friend={currentFriend}

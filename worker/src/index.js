@@ -12,7 +12,7 @@ import { bearerToken, userForToken, touchApiKey, listApiKeys, createApiKey, revo
 import { handleMcp } from './mcp.js';
 import {
   HttpError, uid, nowIso, pairKey, json, autoNut, sanitizeRecipeInput, putImage, photoUrl,
-  PANTRY_LOCATIONS, parsePantryEntry,
+  PANTRY_LOCATIONS, parsePantryEntry, GROCERY_SECTIONS, grocerySection,
 } from './util.js';
 
 // ---------- tiny router ----------
@@ -669,6 +669,50 @@ put('/api/pantry', async (ctx) => {
   });
   await ctx.db.batch(stmts);
   return json({ items: await listPantry(ctx.db, me.id), removed });
+}, KEY);
+
+// ---------- grocery list ----------
+//
+// Only the hand-added part lives here. Everything from the meal plan is worked
+// out on the fly from the plan and the pantry, so there's nothing to store and
+// nothing to go stale when a recipe changes.
+
+const groceryJson = (r) => ({ id: r.id, text: r.text, section: r.section });
+
+get('/api/groceries', async (ctx) => {
+  const me = requireUser(ctx);
+  const { results } = await ctx.db
+    .prepare('SELECT * FROM grocery_items WHERE user_id=? ORDER BY created_at, rowid')
+    .bind(me.id)
+    .all();
+  return json({ items: results.map(groceryJson) });
+}, KEY);
+
+post('/api/groceries', async (ctx) => {
+  const me = requireUser(ctx);
+  const body = await ctx.json();
+  const text = String(body.text ?? '').trim().slice(0, 100);
+  if (!text) throw new HttpError(400, 'Type something to add first');
+  const asked = String(body.section || '').trim().toLowerCase();
+  const section = GROCERY_SECTIONS.some((s) => s.key === asked) ? asked : grocerySection(text);
+  const id = uid();
+  const now = nowIso();
+  await ctx.db
+    .prepare('INSERT INTO grocery_items (id,user_id,text,section,created_at,updated_at) VALUES (?,?,?,?,?,?)')
+    .bind(id, me.id, text, section, now, now)
+    .run();
+  return json({ item: { id, text, section } });
+}, KEY);
+
+del('/api/groceries/:id', async (ctx) => {
+  const me = requireUser(ctx);
+  const row = await ctx.db
+    .prepare('SELECT id FROM grocery_items WHERE id=? AND user_id=?')
+    .bind(ctx.params.id, me.id)
+    .first();
+  if (!row) throw new HttpError(404, 'That isn’t on your grocery list');
+  await ctx.db.prepare('DELETE FROM grocery_items WHERE id=?').bind(row.id).run();
+  return json({ ok: true });
 }, KEY);
 
 // ---------- import ----------

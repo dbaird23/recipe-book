@@ -367,57 +367,6 @@ export function PlanPickerSheet({ dayName, recipes, onPickRecipe, onPickLeftover
   );
 }
 
-export function GrocerySheet({ groups, checked, onToggle, onClose }) {
-  const total = groups.reduce((n, g) => n + g.items.length, 0);
-  return (
-    <Sheet onClose={onClose}>
-      <div className="sheet-title">Grocery list</div>
-      <div className="sheet-sub">
-        {groups.length === 0
-          ? 'Built from your week’s plan'
-          : `${total} items from ${groups.length} planned ${groups.length === 1 ? 'dinner' : 'dinners'}`}
-      </div>
-      <div style={{ flex: 1, overflowY: 'auto', marginTop: 12, display: 'flex', flexDirection: 'column', gap: 14 }}>
-        {groups.map((g) => (
-          <div key={g.key}>
-            <div className="section-label" style={{ fontSize: 11.5, marginBottom: 6 }}>{g.title}</div>
-            <div className="card" style={{ padding: '2px 12px' }}>
-              {g.items.map((item) => {
-                const on = !!checked[item.key];
-                return (
-                  <div
-                    key={item.key}
-                    onClick={() => onToggle(item.key)}
-                    style={{ display: 'flex', gap: 10, alignItems: 'center', padding: '9px 0', borderBottom: '1px solid #f4f1ea', cursor: 'pointer' }}
-                  >
-                    <div
-                      style={{
-                        width: 18, height: 18, borderRadius: 5, flex: '0 0 auto', display: 'grid', placeItems: 'center',
-                        border: `1.5px solid ${on ? 'var(--green)' : '#d8ccc4'}`, background: on ? 'var(--green)' : 'var(--card)',
-                        color: '#fff', fontSize: 11,
-                      }}
-                    >
-                      {on ? '✓' : ''}
-                    </div>
-                    <div style={{ fontSize: 13.5, lineHeight: 1.4, color: on ? 'var(--faint)' : 'var(--ink)', textDecoration: on ? 'line-through' : 'none' }}>
-                      {item.text}
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
-          </div>
-        ))}
-        {groups.length === 0 && (
-          <div style={{ textAlign: 'center', color: 'var(--faint)', fontSize: 13, padding: 24 }}>
-            Plan a dinner and its ingredients show up here.
-          </div>
-        )}
-      </div>
-    </Sheet>
-  );
-}
-
 export function ShareSheet({ recipe, onClose, toast }) {
   const link = `${location.origin}${import.meta.env.BASE_URL}?r=${recipe.id}`;
   async function copy() {

@@ -23,6 +23,10 @@ that runs entirely in your browser with sample data (single-player; changes stay
   ("2 cans black beans"); the grocery list leaves those ingredients out and shows you what it skipped.
   **Take inventory** walks the shelves in one pass — step each count up or down, and anything you
   zero out drops off when you save
+- **Groceries** — its own tab, built from the week's plan and laid out by aisle (produce, dairy,
+  freezer…) rather than by day, so it's one walk through the shop. An ingredient several dinners need
+  is a single line that says how many recipes want it — tap to see which, or to open one. Add
+  anything by hand, and tick things off as you go
 - **Friends** — each member has their own book; browse a friend's recipes, search across all friends,
   save any recipe into your own book (a clean copy — no tags or comments carried over, credited to
   them, and independent of their later edits)
@@ -85,7 +89,9 @@ the key in an `Authorization: Bearer` header.
 | `add_pantry_item` | Put something in the kitchen, from a typed line or explicit fields |
 | `update_pantry_item` | Change an item's name, count, unit or shelf |
 | `remove_pantry_item` | Take something out — used up, or gone off |
-| `grocery_list` | Every ingredient from the recipes planned in a date range, grouped by recipe, minus what the pantry already covers |
+| `grocery_list` | Everything to buy for a date range — the planned recipes' ingredients minus what the pantry covers, plus hand-added items, each tagged with its aisle |
+| `add_grocery_item` | Put something on the grocery list by hand |
+| `remove_grocery_item` | Take a hand-added item off the list |
 
 The tools call the same route handlers the web app does, so permissions and validation can't drift
 between the two.

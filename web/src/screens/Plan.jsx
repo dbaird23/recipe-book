@@ -2,12 +2,6 @@ import { useState } from 'react';
 import { Photo } from '../components.jsx';
 import { DAY_NAMES, mondayOf, addDays, isoDate, shortDate, isToday, weekTitle, metaOf } from '../util.js';
 
-const GroceryIcon = () => (
-  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-    <path d="M4 5 h2 l2.2 11 h10.5 l2 -8 H7" /><circle cx="10" cy="20" r="1.4" /><circle cx="17" cy="20" r="1.4" />
-  </svg>
-);
-
 function DayCard({ day, entry, onPick, onClear, onOpenRecipe, onSaveNote }) {
   const [noteDraft, setNoteDraft] = useState(null); // null = not editing
   const note = entry?.note || '';
@@ -120,19 +114,15 @@ function DayCard({ day, entry, onPick, onClear, onOpenRecipe, onSaveNote }) {
   );
 }
 
-export default function Plan({ weekOffset, setWeekOffset, entries, onPick, onClear, onOpenRecipe, onSaveNote, onOpenGrocery }) {
+export default function Plan({ weekOffset, setWeekOffset, entries, onPick, onClear, onOpenRecipe, onSaveNote }) {
   const monday = mondayOf(weekOffset);
   const days = DAY_NAMES.map((name, i) => ({ name, date: addDays(monday, i) }));
   const byDate = Object.fromEntries(entries.map((e) => [e.date, e]));
 
   return (
     <div className="screen">
-      <div style={{ padding: '16px 20px 4px', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+      <div style={{ padding: '16px 20px 4px' }}>
         <div className="h1">{weekTitle(weekOffset)}</div>
-        <button className="btn-pill-outline" style={{ display: 'flex', alignItems: 'center', gap: 7 }} onClick={onOpenGrocery}>
-          <GroceryIcon />
-          Grocery list
-        </button>
       </div>
 
       <div style={{ padding: '0 20px 10px', display: 'flex', alignItems: 'center', gap: 10 }}>

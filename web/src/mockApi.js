@@ -31,7 +31,8 @@ function mkRecipe(src, ownerId, ownerName, authorsByName) {
     source: src.source || null,
     from: src.from || null,
     nut: src.nut || autoNut((src.ing || []).length),
-    nutEdited: false,
+    // Nutrition supplied by an import or paste is real data, not an estimate
+    nutEdited: !!src.nut,
     rating: src.rating || 0,
     createdAt: new Date().toISOString(),
     photos: [],

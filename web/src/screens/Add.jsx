@@ -32,8 +32,10 @@ export function AddStep1({ onCancel, onDraft, toast }) {
       toast('Paste a recipe first');
       return;
     }
-    const r = parseText(pasteText);
-    onDraft({ ...r, notes: '', tags: [], source: null, photoUrls: [] });
+    const { nut, ...r } = parseText(pasteText);
+    // Carry parsed nutrition through as an override so it isn't re-estimated
+    onDraft({ ...r, tags: [], source: null, photoUrls: [], nutImport: nut || undefined });
+    toast(nut ? 'Recipe parsed — including nutrition' : 'Recipe parsed');
   }
 
   return (
@@ -48,7 +50,7 @@ export function AddStep1({ onCancel, onDraft, toast }) {
         <div style={{ display: 'flex', gap: 8, marginTop: 8 }}>
           <input
             className="input"
-            style={{ flex: 1, minWidth: 0, fontSize: 14, padding: '11px 14px' }}
+            style={{ flex: 1, minWidth: 0, padding: '11px 14px' }}
             placeholder="https://a-recipe-page.com/…"
             value={importUrl}
             onChange={(e) => setImportUrl(e.target.value)}
@@ -195,7 +197,7 @@ export function AddStep2({ draft: initial, editing, knownTags = [], onBack, onSa
           <div style={{ display: 'flex', gap: 8, marginTop: 10 }}>
             <input
               className="input"
-              style={{ flex: 1, minWidth: 0, borderRadius: 999, padding: '7px 14px', fontSize: 13 }}
+              style={{ flex: 1, minWidth: 0, borderRadius: 999, padding: '6px 14px' }}
               placeholder="New tag — e.g. Taco night"
               value={newTag}
               onChange={(e) => setNewTag(e.target.value)}

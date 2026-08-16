@@ -78,16 +78,30 @@ export default function Recipe({
         {(photos.length > 1 || isMine) && (
           <div style={{ display: 'flex', gap: 8, marginTop: 8, overflowX: 'auto' }}>
             {photos.map((p, i) => (
-              <button
-                key={p.id}
-                onClick={() => setPhotoIdx(i)}
-                style={{
-                  width: 64, height: 48, borderRadius: 8, flex: '0 0 auto', cursor: 'pointer', padding: 0,
-                  overflow: 'hidden', border: `2px solid ${i === photoIdx ? 'var(--green)' : 'transparent'}`, background: 'none',
-                }}
-              >
-                <img src={p.url} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }} />
-              </button>
+              <div key={p.id} style={{ position: 'relative', flex: '0 0 auto' }}>
+                <button
+                  onClick={() => setPhotoIdx(i)}
+                  style={{
+                    width: 64, height: 48, borderRadius: 8, cursor: 'pointer', padding: 0, display: 'block',
+                    overflow: 'hidden', border: `2px solid ${i === photoIdx ? 'var(--green)' : 'transparent'}`, background: 'none',
+                  }}
+                >
+                  <img src={p.url} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }} />
+                </button>
+                {isMine && (
+                  <button
+                    aria-label="Remove this photo"
+                    onClick={() => { onRemovePhoto(p.id); setPhotoIdx((idx) => Math.max(0, idx >= i ? idx - 1 : idx)); }}
+                    style={{
+                      position: 'absolute', top: -5, right: -5, width: 20, height: 20, borderRadius: 999,
+                      border: '1.5px solid var(--card)', background: 'var(--red)', color: '#fff',
+                      fontSize: 12, lineHeight: 1, cursor: 'pointer', padding: 0, display: 'grid', placeItems: 'center',
+                    }}
+                  >
+                    ×
+                  </button>
+                )}
+              </div>
             ))}
             {isMine && (
               <>
@@ -100,21 +114,13 @@ export default function Recipe({
                 >
                   +
                 </button>
-                {hero && (
-                  <button
-                    onClick={() => { onRemovePhoto(hero.id); setPhotoIdx(0); }}
-                    className="btn-text-green"
-                    style={{ color: 'var(--red)', fontSize: 11.5, flex: '0 0 auto' }}
-                  >
-                    Remove
-                  </button>
-                )}
                 <input
                   ref={photoInput}
                   type="file"
                   accept="image/*"
+                  multiple
                   hidden
-                  onChange={(e) => { if (e.target.files[0]) onAddPhoto(e.target.files[0]); e.target.value = ''; }}
+                  onChange={(e) => { onAddPhoto([...e.target.files]); e.target.value = ''; }}
                 />
               </>
             )}
@@ -290,7 +296,7 @@ export default function Recipe({
                   <div key={k} style={{ flex: 1 }}>
                     <input
                       className="input"
-                      style={{ padding: 8, fontSize: 14, textAlign: 'center', borderRadius: 8 }}
+                      style={{ padding: 8, textAlign: 'center', borderRadius: 8 }}
                       inputMode="numeric"
                       value={nut[k]}
                       onChange={(e) => setNutDraft({ ...nut, [k]: e.target.value.replace(/[^0-9]/g, '') })}

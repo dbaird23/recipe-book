@@ -61,12 +61,45 @@ function firstServings(v) {
   return m ? +m[0] : 1;
 }
 
-function imagesOf(v) {
+function imageEntries(v) {
   if (v == null) return [];
-  if (typeof v === 'string') return [v];
-  if (Array.isArray(v)) return v.flatMap(imagesOf);
-  if (typeof v === 'object') return v.url ? [v.url] : [];
+  if (typeof v === 'string') return [{ url: v, w: 0 }];
+  if (Array.isArray(v)) return v.flatMap(imageEntries);
+  if (typeof v === 'object') {
+    const url = typeof v.url === 'string' ? v.url : typeof v.contentUrl === 'string' ? v.contentUrl : null;
+    if (url) return [{ url, w: +v.width || 0 }];
+  }
   return [];
+}
+
+// Recipe sites publish the SAME picture at several crops — photo.jpg,
+// photo-500x500.jpg, photo-480x270.jpg — so a naive read imports one image
+// five times. Collapse variants to their base and keep the largest of each.
+function imageKey(url) {
+  try {
+    const u = new URL(url);
+    return (u.origin + u.pathname)
+      .replace(/[-_]\d{2,4}x\d{2,4}(?=\.\w{3,4}$)/i, '')
+      .replace(/[-_]scaled(?=\.\w{3,4}$)/i, '')
+      .replace(/[-_@]\dx(?=\.\w{3,4}$)/i, '')
+      .toLowerCase();
+  } catch {
+    return url;
+  }
+}
+
+function imagesOf(v, max = 6) {
+  const best = new Map();
+  for (const e of imageEntries(v)) {
+    if (!/^https?:\/\//i.test(e.url)) continue;
+    const size = /[-_](\d{2,4})x\d{2,4}(?=\.\w{3,4}$)/i.exec(e.url);
+    // No size suffix usually means the full-size original, so rank it highest
+    const width = e.w || (size ? +size[1] : 99999);
+    const key = imageKey(e.url);
+    const prev = best.get(key);
+    if (!prev || width > prev.width) best.set(key, { url: e.url, width });
+  }
+  return [...best.values()].map((e) => e.url).slice(0, max);
 }
 
 function gramsOf(v) {
@@ -152,7 +185,7 @@ export async function importFromUrl(rawUrl) {
     notes: '',
     source: domain,
     author: textOf(recipe.author?.name ?? recipe.author) || null,
-    images: imagesOf(recipe.image).slice(0, 4),
+    images: imagesOf(recipe.image),
     nutImport: gramsOf(nutrition.calories)
       ? {
           cal: gramsOf(nutrition.calories),

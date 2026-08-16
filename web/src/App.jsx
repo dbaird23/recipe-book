@@ -321,13 +321,21 @@ export default function App() {
             applyRecipe(recipe);
             toast('Comment posted');
           }}
-          onAddPhoto={async (file) => {
-            try {
-              const { recipe } = await api.addPhoto(currentRecipe.id, file);
-              applyRecipe(recipe);
-            } catch (e) {
-              toast(e.message);
+          onAddPhoto={async (files) => {
+            // Uploaded one at a time so a single bad file doesn't sink the batch
+            let recipe = null;
+            let failed = 0;
+            for (const file of [].concat(files)) {
+              try {
+                ({ recipe } = await api.addPhoto(currentRecipe.id, file));
+              } catch (e) {
+                failed++;
+                toast(e.message);
+              }
             }
+            if (recipe) applyRecipe(recipe);
+            const added = [].concat(files).length - failed;
+            if (added > 1) toast(`Added ${added} photos`);
           }}
           onRemovePhoto={async (photoId) => {
             const { recipe } = await api.removePhoto(currentRecipe.id, photoId);

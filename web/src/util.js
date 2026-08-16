@@ -24,30 +24,116 @@ export function autoNut(ingCount) {
   return { cal: 160 + n * 38, pro: 4 + n * 4, carb: 10 + n * 5, fat: 4 + n * 3 };
 }
 
-// Parse a pasted block of recipe text (same rules as the design prototype).
+// --- pasted-recipe parsing ---
+
+const SECTIONS = [
+  [/^(ingredients|what you.?ll need)\b/i, 'ing'],
+  [/^(directions|instructions|steps|method|preparation|how to make)\b/i, 'dir'],
+  [/^(notes?|tips?|cook.?s notes?|recipe notes?)\b/i, 'notes'],
+  [/^(nutrition|nutritional|per serving)\b/i, 'nut'],
+];
+
+// "1 hr 20 min" → 80, "15 minutes" → 15, "30" → 30
+function minutesOf(s) {
+  const h = /(\d+(?:\.\d+)?)\s*(?:hours?|hrs?|h)\b/i.exec(s);
+  const m = /(\d+)\s*(?:minutes?|mins?|m)\b/i.exec(s);
+  let total = 0;
+  if (h) total += Math.round(parseFloat(h[1]) * 60);
+  if (m) total += +m[1];
+  if (!h && !m) {
+    const n = /(\d+)/.exec(s);
+    if (n) total = +n[1];
+  }
+  return total || '';
+}
+
+const NUT_FIELDS = [
+  ['cal', /(?:calories|kcal)/i],
+  ['pro', /protein/i],
+  ['carb', /(?:carbohydrates?|carbs?)/i],
+  ['fat', /(?:total\s+)?fat/i],
+];
+
+/** Pull calories/protein/carbs/fat out of a nutrition blob, in any order or layout. */
+function parseNutrition(text) {
+  if (!text.trim()) return null;
+  const out = {};
+  let found = 0;
+  for (const [key, kw] of NUT_FIELDS) {
+    // "Protein: 28g" or "28g protein"
+    const after = new RegExp(kw.source + '\\s*[:\\-]?\\s*([\\d.]+)', 'i').exec(text);
+    const before = new RegExp('([\\d.]+)\\s*(?:g|mg|kcal)?\\s*(?:of\\s+)?' + kw.source, 'i').exec(text);
+    const raw = after?.[1] ?? before?.[1];
+    if (raw != null) {
+      out[key] = Math.round(parseFloat(raw)) || 0;
+      found++;
+    }
+  }
+  return found ? { cal: 0, pro: 0, carb: 0, fat: 0, ...out } : null;
+}
+
+// Deliberately narrow: a leading quantity, or a short line naming a staple.
+// Anything looser swallows the description paragraph that often sits up top.
+const looksLikeIngredient = (l) =>
+  /^[\d¼½¾⅓⅔⅛⅜⅝⅞]/.test(l) ||
+  (l.length <= 40 && /^(salt|pepper|pinch|dash|olive oil|butter|water|ice|juice|zest)\b/i.test(l));
+
+const stripBullet = (l) => l.replace(/^[-–—•*·]\s*/, '');
+const stripNumber = (l) => l.replace(/^\(?\d+[.)\]]\s+/, '');
+
+/**
+ * Parse a pasted recipe into its parts. Recognises labelled sections
+ * (Ingredients / Directions / Notes / Nutrition) and falls back to shape
+ * heuristics when the paste has no headings.
+ */
 export function parseText(text) {
   const lines = text.split('\n').map((l) => l.trim());
   let title = '', prep = '', cook = '', serv = '';
-  const ing = [], dir = [];
+  const ing = [], dir = [], notes = [], nut = [];
   let mode = 'head';
-  for (const l of lines) {
-    if (!l) continue;
+
+  for (const raw of lines) {
+    if (!raw) continue;
+    const l = stripBullet(raw);
     const low = l.toLowerCase();
+
+    const section = SECTIONS.find(([re]) => re.test(low));
+    if (section) {
+      mode = section[1];
+      // Allow "Nutrition: 350 cal, 20g protein" on the heading line itself
+      const inline = l.slice(l.match(section[0])[0].length).replace(/^[:\-–]\s*/, '');
+      if (inline && mode === 'nut') nut.push(inline);
+      continue;
+    }
+
     let m;
-    if ((m = low.match(/prep[^0-9]*([0-9]+)/))) { prep = m[1]; continue; }
-    if ((m = low.match(/cook[^0-9]*([0-9]+)/)) && low.indexOf('cook') === 0) { cook = m[1]; continue; }
-    if ((m = low.match(/(serves|servings?)[^0-9]*([0-9]+)/))) { serv = m[2]; continue; }
-    if (/^ingredients\b/.test(low)) { mode = 'ing'; continue; }
-    if (/^(directions|instructions|steps|method)\b/.test(low)) { mode = 'dir'; continue; }
+    if ((m = low.match(/^(?:total\s+)?prep(?:aration)?\s*(?:time)?\s*[:\-]?\s*(.+)/))) { prep = minutesOf(m[1]); continue; }
+    if ((m = low.match(/^cook(?:ing)?\s*(?:time)?\s*[:\-]?\s*(.+)/))) { cook = minutesOf(m[1]); continue; }
+    if ((m = low.match(/^(?:serves|servings?|yields?|makes)\s*[:\-]?\s*(\d+)/))) { serv = m[1]; continue; }
+    if ((m = low.match(/^total\s*time\s*[:\-]?\s*(.+)/))) { if (!cook) cook = minutesOf(m[1]); continue; }
+
     if (mode === 'head') {
       if (!title) title = l;
-      else ing.push(l);
+      else if (looksLikeIngredient(l)) { mode = 'ing'; ing.push(l); }
+      else notes.push(l); // a description paragraph before any heading
       continue;
     }
     if (mode === 'ing') ing.push(l);
-    else dir.push(l.replace(/^\d+[.)]\s*/, ''));
+    else if (mode === 'dir') dir.push(stripNumber(l));
+    else if (mode === 'notes') notes.push(l);
+    else if (mode === 'nut') nut.push(l);
   }
-  return { title, prep, cook, serv, ing: ing.join('\n'), dirs: dir.join('\n') };
+
+  return {
+    title,
+    prep,
+    cook,
+    serv,
+    ing: ing.join('\n'),
+    dirs: dir.join('\n'),
+    notes: notes.join('\n'),
+    nut: parseNutrition(nut.join('\n')),
+  };
 }
 
 // ---- ingredient scaling (1×–4× view on the recipe page) ----

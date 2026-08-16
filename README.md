@@ -51,6 +51,13 @@ First time, create the local database:
 npx wrangler d1 migrations apply recipe-book --local
 ```
 
+Google sign-in is configured, so `wrangler dev` requires it locally too. To get the
+passwordless dev sign-in back on localhost, create `worker/.dev.vars` (git-ignored):
+
+```
+GOOGLE_CLIENT_ID=""
+```
+
 Sign in once (dev mode — no password), then optionally load the demo friends and starter recipes:
 
 ```bash
@@ -99,9 +106,9 @@ disables the dev sign-in fallback.
 - **Invites** generate a real single-use link to copy or text yourself (no SMS gateway needed).
 - **Share** copies a direct link to the recipe (friends already see your recipes) instead of the
   prototype's pick-a-friend sheet.
-- **Nutrition** auto-estimates use the prototype's placeholder heuristic; imported recipes use the
-  source site's published nutrition when available. Adjust by hand on any recipe. Note that editing a
-  recipe re-runs the estimate unless the numbers were adjusted by hand.
+- **Nutrition** auto-estimates use the prototype's placeholder heuristic. Nutrition that came from an
+  import or a paste is treated as real data, so editing the recipe won't overwrite it; a recipe with
+  only estimated numbers re-estimates when its ingredients change.
 - **List/grid view** is a per-device preference in the profile sheet (it was a canvas knob in the
   prototype).
 - Recipes can be **deleted** from the edit screen (not in the prototype, but necessary in a real app).

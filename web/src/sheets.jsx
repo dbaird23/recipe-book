@@ -1,11 +1,13 @@
 import { useRef, useState } from 'react';
 import { api } from './api.js';
 import { Avatar, Sheet, ChipToggle } from './components.jsx';
+import AvatarCropper from './cropper.jsx';
 import { MEALS, TAGS, RATING_FILTERS } from './util.js';
 
 export function ProfileSheet({ user, layout, setLayout, onClose, onSaved, onSignOut, toast }) {
   const [name, setName] = useState(user.name);
   const [busy, setBusy] = useState(false);
+  const [cropFile, setCropFile] = useState(null);
   const fileInput = useRef(null);
 
   async function save() {
@@ -27,9 +29,20 @@ export function ProfileSheet({ user, layout, setLayout, onClose, onSaved, onSign
     try {
       const { avatarUrl } = await api.uploadAvatar(file);
       onSaved({ ...user, avatarUrl });
+      toast('Photo updated');
     } catch (e) {
       toast(e.message);
     }
+  }
+
+  if (cropFile) {
+    return (
+      <AvatarCropper
+        file={cropFile}
+        onCancel={() => setCropFile(null)}
+        onDone={async (cropped) => { setCropFile(null); await pickPhoto(cropped); }}
+      />
+    );
   }
 
   return (
@@ -56,7 +69,7 @@ export function ProfileSheet({ user, layout, setLayout, onClose, onSaved, onSign
           type="file"
           accept="image/*"
           hidden
-          onChange={(e) => { if (e.target.files[0]) pickPhoto(e.target.files[0]); e.target.value = ''; }}
+          onChange={(e) => { if (e.target.files[0]) setCropFile(e.target.files[0]); e.target.value = ''; }}
         />
       </div>
       <div className="section-label" style={{ fontSize: 11, margin: '14px 0 6px' }}>Name</div>

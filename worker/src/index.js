@@ -233,12 +233,14 @@ post('/api/recipes', async (ctx) => {
     ctx.db
       .prepare(
         `INSERT INTO recipes (id,owner_id,title,prep,cook,servings,tags,ing,dir,notes,source,nut,nut_edited,created_at,updated_at)
-         VALUES (?,?,?,?,?,?,?,?,?,?,?,?,0,?,?)`
+         VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`
       )
       .bind(
         id, me.id, r.title, r.prep, r.cook, r.servings,
         JSON.stringify(r.tags), JSON.stringify(r.ing), JSON.stringify(r.dir),
-        r.notes, r.source, JSON.stringify(nut), now, now
+        // Nutrition that came from an import or paste is real data, not an
+        // estimate, so mark it edited and stop the heuristic overwriting it
+        r.notes, r.source, JSON.stringify(nut), r.nut ? 1 : 0, now, now
       ),
   ];
   const urls = Array.isArray(body.photoUrls) ? body.photoUrls.slice(0, 8) : [];

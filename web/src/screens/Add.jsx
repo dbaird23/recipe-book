@@ -45,7 +45,9 @@ export function AddStep1({ onCancel, onDraft, toast }) {
         <div style={{ fontSize: 16, fontWeight: 700 }}>Add recipe</div>
         <div style={{ width: 56 }} />
       </div>
-      <div style={{ flex: 1, display: 'flex', flexDirection: 'column', padding: '8px 20px 24px', minHeight: 0 }}>
+      {/* overflowY guards short screens: the app is clamped to one viewport,
+          so without it this step would clip rather than scroll */}
+      <div style={{ flex: 1, display: 'flex', flexDirection: 'column', padding: '8px 20px 24px', minHeight: 0, overflowY: 'auto' }}>
         <div className="section-label">From a link</div>
         <div style={{ display: 'flex', gap: 8, marginTop: 8 }}>
           <input

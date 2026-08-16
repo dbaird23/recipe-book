@@ -35,12 +35,17 @@ input, textarea, button { font-family: inherit; }
 input:focus, textarea:focus { outline: 2px solid #b9cbb9; outline-offset: -1px; }
 button { color: inherit; }
 
-#root { display: flex; justify-content: center; min-height: 100dvh; }
+/* The app is exactly one viewport tall and never scrolls itself — each screen
+   scrolls inside its own .scroll box. That's what keeps the header above and
+   the tab bar (absolute, bottom:0 of .app) pinned while content moves. Using
+   min-height here instead lets .app grow past the viewport, which pushes the
+   tab bar below the fold and scrolls the header away. */
+#root { display: flex; justify-content: center; height: 100dvh; }
 .app {
   position: relative;
   width: 100%;
   max-width: 430px;
-  min-height: 100dvh;
+  height: 100%;
   background: var(--bg);
   display: flex;
   flex-direction: column;

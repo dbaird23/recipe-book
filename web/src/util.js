@@ -143,6 +143,39 @@ export function parseText(text) {
   };
 }
 
+// ---- meal plan weeks (Monday-start, local time) ----
+
+export const DAY_NAMES = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'];
+
+/** Monday of the week `offset` weeks from the current one. */
+export function mondayOf(offset = 0) {
+  const d = new Date();
+  d.setHours(12, 0, 0, 0); // midday avoids DST edges shifting the date
+  d.setDate(d.getDate() - ((d.getDay() + 6) % 7) + offset * 7);
+  return d;
+}
+
+export const addDays = (date, n) => {
+  const d = new Date(date);
+  d.setDate(d.getDate() + n);
+  return d;
+};
+
+/** Local YYYY-MM-DD — not toISOString(), which converts to UTC and can slip a day. */
+export const isoDate = (d) =>
+  `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+
+export const shortDate = (d) => d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+
+export const isToday = (d) => isoDate(d) === isoDate(new Date());
+
+export function weekTitle(offset) {
+  if (offset === 0) return 'This week';
+  if (offset === 1) return 'Next week';
+  if (offset === -1) return 'Last week';
+  return offset > 0 ? `In ${offset} weeks` : `${Math.abs(offset)} weeks ago`;
+}
+
 // ---- ingredient scaling (1×–4× view on the recipe page) ----
 
 const UNI_FRAC = {

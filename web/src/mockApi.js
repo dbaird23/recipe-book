@@ -92,6 +92,16 @@ function findRecipe(id) {
   return r;
 }
 
+function planRecipeOf(id) {
+  const r = allRecipes().find((x) => x.id === id);
+  if (!r) return null;
+  return {
+    id: r.id, title: r.title, ownerId: r.ownerId, ownerName: r.ownerName, mine: r.ownerId === state.me.id,
+    prep: r.prep, cook: r.cook, servings: r.servings, ing: r.ing,
+    photoUrl: r.photos?.[0]?.url || null,
+  };
+}
+
 function demoOnly() {
   throw new Error('This needs the real app — the demo is single-player');
 }
@@ -133,6 +143,10 @@ export const mockApi = {
 
   inviteInfo: async () => demoOnly(),
   createInvite: async () => demoOnly(),
+
+  apiKeys: async () => ({ keys: [] }),
+  createApiKey: async () => demoOnly(),
+  revokeApiKey: async () => demoOnly(),
 
   myRecipes: async () => ({ recipes: state.myRecipes }),
   createRecipe: async (body) => {
@@ -249,6 +263,28 @@ export const mockApi = {
     state.friends = state.friends.filter((f) => f.id !== id);
     save();
     return { ok: true };
+  },
+
+  plan: async (start, end) => {
+    const entries = (state.plan || [])
+      .filter((e) => e.date >= start && e.date <= end)
+      .map((e) => ({ ...e, recipe: e.type === 'recipe' ? planRecipeOf(e.recipeId) : null }));
+    return { entries };
+  },
+  setPlanDay: async (date, body) => {
+    state.plan = state.plan || [];
+    const prev = state.plan.find((e) => e.date === date) || { date, type: null, text: null, note: '', recipeId: null };
+    if ('dinner' in body) {
+      const d = body.dinner;
+      prev.type = d?.type || null;
+      prev.recipeId = d?.type === 'recipe' ? d.recipeId : null;
+      prev.text = d?.type === 'text' ? d.text : null;
+    }
+    if ('note' in body) prev.note = String(body.note || '').trim();
+    state.plan = state.plan.filter((e) => e.date !== date);
+    if (prev.type || prev.note) state.plan.push(prev);
+    save();
+    return { entry: { ...prev, recipe: prev.type === 'recipe' ? planRecipeOf(prev.recipeId) : null } };
   },
 
   importUrl: async () => {

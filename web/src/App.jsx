@@ -6,8 +6,9 @@ import Home from './screens/Home.jsx';
 import { Friends, FriendDetail } from './screens/Friends.jsx';
 import Recipe from './screens/Recipe.jsx';
 import { AddStep1, AddStep2 } from './screens/Add.jsx';
-import { ProfileSheet, FilterSheet, ShareSheet, InviteSheet, RemoveFriendSheet } from './sheets.jsx';
-import { matchesFilters, customTagsFrom, nextSort } from './util.js';
+import Plan from './screens/Plan.jsx';
+import { ProfileSheet, ApiKeysSheet, FilterSheet, ShareSheet, InviteSheet, RemoveFriendSheet, PlanPickerSheet, GrocerySheet } from './sheets.jsx';
+import { matchesFilters, customTagsFrom, nextSort, DAY_NAMES, mondayOf, addDays, isoDate } from './util.js';
 
 const EMPTY_FILTERS = { selMeals: [], selTags: [], query: '', rating: 0 };
 
@@ -34,7 +35,19 @@ export default function App() {
   const [draft, setDraft] = useState(null);
   const [editingId, setEditingId] = useState(null);
 
-  const [sheet, setSheet] = useState(null); // 'profile' | 'filter' | 'share' | 'invite' | 'remove'
+  const [sheet, setSheet] = useState(null); // 'profile' | 'keys' | 'filter' | 'share' | 'invite' | 'remove' | 'grocery'
+
+  // meal plan
+  const [weekOffset, setWeekOffset] = useState(0);
+  const [planEntries, setPlanEntries] = useState([]);
+  const [pickerDay, setPickerDay] = useState(null);
+  const [groceryChecked, setGroceryChecked] = useState(() => {
+    try {
+      return JSON.parse(localStorage.getItem('rb-grocery') || '{}');
+    } catch {
+      return {};
+    }
+  });
   const [toastMsg, setToastMsg] = useState(null);
   const toastTimer = useRef(null);
 
@@ -114,6 +127,51 @@ export default function App() {
 
   const isMine = currentRecipe && user && currentRecipe.ownerId === user.id;
   const savedAlready = currentRecipe && !isMine && myRecipes.some((m) => m.title === currentRecipe.title);
+
+  // ---- meal plan ----
+
+  const weekStart = isoDate(mondayOf(weekOffset));
+  const weekEnd = isoDate(addDays(mondayOf(weekOffset), 6));
+
+  useEffect(() => {
+    if (!user || screen !== 'plan') return;
+    let stale = false;
+    api
+      .plan(weekStart, weekEnd)
+      .then(({ entries }) => { if (!stale) setPlanEntries(entries); })
+      .catch((e) => toast(e.message));
+    return () => { stale = true; };
+  }, [user, screen, weekStart, weekEnd]);
+
+  async function savePlanDay(date, body) {
+    try {
+      const { entry } = await api.setPlanDay(date, body);
+      setPlanEntries((prev) => {
+        const rest = prev.filter((e) => e.date !== date);
+        return entry.type || entry.note ? [...rest, entry] : rest;
+      });
+      return entry;
+    } catch (e) {
+      toast(e.message);
+    }
+  }
+
+  // Every recipe you could plan: yours plus your friends', labelled by owner
+  const plannableRecipes = [
+    ...myRecipes.map((r) => ({ ...r, ownerLabel: 'Yours' })),
+    ...allFriendRecipes.map((r) => ({ ...r, ownerLabel: r.ownerName })),
+  ];
+
+  const groceryGroups = DAY_NAMES.map((name, i) => {
+    const date = isoDate(addDays(mondayOf(weekOffset), i));
+    const entry = planEntries.find((e) => e.date === date);
+    if (!entry?.recipe) return null;
+    return {
+      key: date,
+      title: `${name.slice(0, 3).toUpperCase()} · ${entry.recipe.title.toUpperCase()}`,
+      items: entry.recipe.ing.map((text, j) => ({ key: `${date}-${j}`, text })),
+    };
+  }).filter(Boolean);
 
   function openRecipe(r, from) {
     setCurrentRecipe(r);
@@ -212,7 +270,7 @@ export default function App() {
     );
   }
 
-  const showNav = screen === 'home' || screen === 'friends';
+  const showNav = screen === 'home' || screen === 'friends' || screen === 'plan';
   const activeList = screen === 'friend' ? friendRecipes : myRecipes;
   const filterResultCount = activeList.filter((r) => matchesFilters(r, filters)).length;
   const customTags = customTagsFrom([...myRecipes, ...allFriendRecipes]);
@@ -233,6 +291,26 @@ export default function App() {
           openRecipe={(r) => openRecipe(r, 'home')}
           openProfile={() => setSheet('profile')}
           startAdd={() => { setDraft(null); setEditingId(null); setScreen('add1'); }}
+        />
+      )}
+
+      {screen === 'plan' && (
+        <Plan
+          weekOffset={weekOffset}
+          setWeekOffset={setWeekOffset}
+          entries={planEntries}
+          onPick={(day) => setPickerDay(day)}
+          onClear={(date) => savePlanDay(date, { dinner: null })}
+          onSaveNote={(date, note) => savePlanDay(date, { note })}
+          onOpenRecipe={async (id) => {
+            try {
+              const { recipe } = await api.getRecipe(id);
+              openRecipe(recipe, 'plan');
+            } catch (e) {
+              toast(e.message);
+            }
+          }}
+          onOpenGrocery={() => setSheet('grocery')}
         />
       )}
 
@@ -272,7 +350,7 @@ export default function App() {
           user={user}
           isMine={isMine}
           savedAlready={savedAlready}
-          goBack={() => setScreen(backTo === 'friend' ? 'friend' : backTo === 'friends' ? 'friends' : 'home')}
+          goBack={() => setScreen(['friend', 'friends', 'plan'].includes(backTo) ? backTo : 'home')}
           onEdit={() => {
             setDraft({
               title: currentRecipe.title,
@@ -384,6 +462,7 @@ export default function App() {
         <TabBar
           screen={screen}
           onHome={() => { setScreen('home'); setFilters({ ...filters, query: '' }); }}
+          onPlan={() => setScreen('plan')}
           onFriends={() => { setScreen('friends'); setFilters({ ...filters, query: '' }); }}
         />
       )}
@@ -396,9 +475,11 @@ export default function App() {
           onClose={() => setSheet(null)}
           onSaved={setUser}
           onSignOut={signOut}
+          onOpenKeys={() => setSheet('keys')}
           toast={toast}
         />
       )}
+      {sheet === 'keys' && <ApiKeysSheet onClose={() => setSheet(null)} toast={toast} />}
       {sheet === 'filter' && (
         <FilterSheet filters={filters} setFilters={setFilters} customTags={customTags} resultCount={filterResultCount} onClose={() => setSheet(null)} />
       )}
@@ -406,6 +487,47 @@ export default function App() {
         <ShareSheet recipe={currentRecipe} onClose={() => setSheet(null)} toast={toast} />
       )}
       {sheet === 'invite' && <InviteSheet onClose={() => setSheet(null)} toast={toast} />}
+
+      {pickerDay && (
+        <PlanPickerSheet
+          dayName={pickerDay.name}
+          recipes={plannableRecipes}
+          onClose={() => setPickerDay(null)}
+          toast={toast}
+          onPickRecipe={async (r, surprise) => {
+            const date = isoDate(pickerDay.date);
+            setPickerDay(null);
+            await savePlanDay(date, { dinner: { type: 'recipe', recipeId: r.id } });
+            if (surprise) toast(`Surprise: ${r.title}`);
+          }}
+          onPickLeftovers={() => {
+            const date = isoDate(pickerDay.date);
+            setPickerDay(null);
+            savePlanDay(date, { dinner: { type: 'leftovers' } });
+          }}
+          onPickText={(text) => {
+            const date = isoDate(pickerDay.date);
+            setPickerDay(null);
+            savePlanDay(date, { dinner: { type: 'text', text } });
+          }}
+        />
+      )}
+
+      {sheet === 'grocery' && (
+        <GrocerySheet
+          groups={groceryGroups}
+          checked={groceryChecked}
+          onToggle={(key) =>
+            setGroceryChecked((prev) => {
+              const next = { ...prev, [key]: !prev[key] };
+              if (!next[key]) delete next[key];
+              localStorage.setItem('rb-grocery', JSON.stringify(next));
+              return next;
+            })
+          }
+          onClose={() => setSheet(null)}
+        />
+      )}
       {sheet === 'remove' && currentFriend && (
         <RemoveFriendSheet
           friend={currentFriend}

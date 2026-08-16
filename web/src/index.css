@@ -108,6 +108,12 @@ input, textarea, select { font-size: 16px; }
   resize: vertical; line-height: 1.6;
 }
 
+.week-nav {
+  border: 1px solid var(--input-bd); background: var(--card); color: #665f58; border-radius: 8px;
+  width: 26px; height: 26px; font-size: 15px; cursor: pointer; display: flex;
+  align-items: center; justify-content: center; padding: 0; line-height: 1; flex: 0 0 auto;
+}
+
 /* --- chips --- */
 .chip {
   border-radius: 999px; padding: 7px 14px; font-size: 13px; font-weight: 600; cursor: pointer;

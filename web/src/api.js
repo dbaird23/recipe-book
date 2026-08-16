@@ -41,6 +41,10 @@ const realApi = {
   inviteInfo: (token) => request(`/api/invites/${token}`),
   createInvite: (phone) => request('/api/invites', { method: 'POST', body: { phone } }),
 
+  apiKeys: () => request('/api/keys'),
+  createApiKey: (name) => request('/api/keys', { method: 'POST', body: { name } }),
+  revokeApiKey: (id) => request(`/api/keys/${id}`, { method: 'DELETE' }),
+
   myRecipes: () => request('/api/recipes'),
   createRecipe: (body) => request('/api/recipes', { method: 'POST', body }),
   getRecipe: (id) => request(`/api/recipes/${id}`),
@@ -68,6 +72,9 @@ const realApi = {
   removeFriend: (id) => request(`/api/friends/${id}`, { method: 'DELETE' }),
 
   importUrl: (url) => request('/api/import', { method: 'POST', body: { url } }),
+
+  plan: (start, end) => request(`/api/plan?start=${start}&end=${end}`),
+  setPlanDay: (date, body) => request(`/api/plan/${date}`, { method: 'PUT', body }),
 };
 
 export const api = DEMO ? mockApi : realApi;

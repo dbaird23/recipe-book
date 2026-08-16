@@ -26,6 +26,8 @@ that runs entirely in your browser with sample data (single-player; changes stay
   automatically become friends with everyone in the book
 - **Tags** — built-in meal/tag chips plus your own custom tags, reusable across recipes and filters
 - **Google sign-in** — with a passwordless dev sign-in fallback for local development
+- **AI & API access** — each member can issue API keys and point an AI assistant (Cursor, Claude,
+  anything that speaks MCP) at their recipes and meal plan — see below
 
 ## Stack
 
@@ -34,6 +36,68 @@ that runs entirely in your browser with sample data (single-player; changes stay
   with Google ID tokens verified via Web Crypto, and a schema.org/JSON-LD recipe importer
 
 The Worker also serves the built SPA, so the whole app is one deployment on one origin.
+
+## AI & API access
+
+Members can hand an AI assistant a key to their own book — useful for meal planning and grocery
+shopping, where the assistant needs to actually read your recipes rather than invent them.
+
+**Get a key:** tap your avatar → *Connected apps* → **Give an AI assistant access**. Name it, create
+it, and copy the token. It's shown once and stored only as a SHA-256 hash, so a lost key gets
+replaced, not recovered. Revoke any key from the same sheet; it stops working immediately.
+
+### Connect Cursor
+
+The create-key screen prints this config with your URL and token already filled in. Paste it into
+`~/.cursor/mcp.json` (or `.cursor/mcp.json` in a project) and restart Cursor:
+
+```json
+{
+  "mcpServers": {
+    "recipe-book": {
+      "url": "https://recipe-book.dbaird23.workers.dev/mcp",
+      "headers": { "Authorization": "Bearer rb_your_key_here" }
+    }
+  }
+}
+```
+
+Any MCP client works the same way — the endpoint is Streamable HTTP at `POST /mcp`, stateless, with
+the key in an `Authorization: Bearer` header.
+
+### Tools
+
+| Tool | What it does |
+|---|---|
+| `whoami` | Which account the key belongs to — handy for checking the connection |
+| `list_recipes` | Summaries of your recipes, your friends', or both, with an optional search |
+| `get_recipe` | One recipe in full: ingredients, directions, notes, nutrition, comments |
+| `create_recipe` | Add a recipe to your book |
+| `update_recipe` | Change a recipe you own; send only the fields you want changed |
+| `import_recipe_from_url` | Parse a recipe off a web page, optionally saving it straight away |
+| `get_meal_plan` | What's planned for dinner across a date range |
+| `set_meal_plan_day` | Set or clear one day's dinner and note |
+| `grocery_list` | Every ingredient from the recipes planned in a date range, grouped by recipe |
+
+The tools call the same route handlers the web app does, so permissions and validation can't drift
+between the two.
+
+### REST
+
+The same key works against the REST API for anything that isn't MCP:
+
+```bash
+curl https://recipe-book.dbaird23.workers.dev/api/recipes \
+  -H "Authorization: Bearer rb_your_key_here"
+```
+
+Open to keys: `GET /api/me`, `GET|POST /api/recipes`, `GET|PATCH /api/recipes/:id`,
+`POST /api/recipes/:id/save`, `GET /api/friends`, `GET /api/friends/recipes`,
+`GET /api/friends/:id/recipes`, `GET|PUT /api/plan`, `POST /api/import`.
+
+**Deliberately not open to keys:** deleting recipes, comments and photos, invites, avatars, and
+issuing or listing keys. Those need a signed-in browser, so a leaked key can't lose you data or let
+anyone else into the book. Every other route answers `403` to a key.
 
 ## Local development
 
@@ -48,7 +112,7 @@ with the API proxied. Open http://localhost:5173.
 First time, create the local database:
 
 ```bash
-npx wrangler d1 migrations apply recipe-book --local
+npm run migrate:local -w worker
 ```
 
 Google sign-in is configured, so `wrangler dev` requires it locally too. To get the
@@ -99,7 +163,11 @@ disables the dev sign-in fallback.
 | `npm run deploy` | Build the SPA and deploy the Worker |
 | `npm run seed -- --remote` | Seed demo data into the deployed database |
 | `npm run tail` | Live-tail production logs |
-| `npx wrangler d1 migrations apply recipe-book --remote` | Apply new migrations to production |
+| `npm run migrate -w worker` | Apply new migrations to production |
+| `npm run migrate:local -w worker` | Apply new migrations to the local dev database |
+
+Wrangler reads its config from `worker/wrangler.jsonc`, so the raw `npx wrangler …` commands only
+work from inside `worker/`. The npm scripts above run from anywhere in the repo.
 
 ## Notes / deviations from the prototype
 
@@ -114,3 +182,5 @@ disables the dev sign-in fallback.
 - Recipes can be **deleted** from the edit screen (not in the prototype, but necessary in a real app).
 - **URL import** depends on the site publishing schema.org recipe data, and some sites block
   server-side fetches outright. When that happens the app says so and points at "paste the text".
+- **AI & API access** isn't in the prototype at all — it exists so an assistant can plan meals and
+  build a shopping list against the real book instead of guessing.

@@ -8,16 +8,25 @@ import {
   currentUser,
 } from './auth.js';
 import { importFromUrl } from './importer.js';
+import { bearerToken, userForToken, touchApiKey, listApiKeys, createApiKey, revokeApiKey } from './apikeys.js';
+import { handleMcp } from './mcp.js';
 import { HttpError, uid, nowIso, pairKey, json, autoNut, sanitizeRecipeInput, putImage, photoUrl } from './util.js';
 
 // ---------- tiny router ----------
 
 const routes = [];
-const on = (method, pattern, handler) => routes.push({ method, pattern: new URLPattern({ pathname: pattern }), handler });
-const get = (p, h) => on('GET', p, h);
-const post = (p, h) => on('POST', p, h);
-const patch = (p, h) => on('PATCH', p, h);
-const del = (p, h) => on('DELETE', p, h);
+const on = (method, pattern, handler, opts = {}) =>
+  routes.push({ method, pattern: new URLPattern({ pathname: pattern }), handler, key: !!opts.key });
+const get = (p, h, o) => on('GET', p, h, o);
+const post = (p, h, o) => on('POST', p, h, o);
+const patch = (p, h, o) => on('PATCH', p, h, o);
+const put = (p, h, o) => on('PUT', p, h, o);
+const del = (p, h, o) => on('DELETE', p, h, o);
+
+// Pass as the last argument to open a route to API keys. Keys are for reading
+// and writing recipes and the meal plan; account-level routes — invites,
+// deleting, avatars, minting more keys — stay cookie-only on purpose.
+const KEY = { key: true };
 
 // ---------- helpers ----------
 
@@ -158,7 +167,7 @@ post('/api/auth/logout', async (ctx) => {
   return json({ ok: true }, { headers: { 'set-cookie': clearCookie(ctx.secure) } });
 });
 
-get('/api/me', (ctx) => json({ user: userPublic(requireUser(ctx)) }));
+get('/api/me', (ctx) => json({ user: userPublic(requireUser(ctx)) }), KEY);
 
 patch('/api/me', async (ctx) => {
   const me = requireUser(ctx);
@@ -219,7 +228,7 @@ const listRecipes = async (db, ownerId) => {
   return Promise.all(results.map((r) => recipeJson(db, r)));
 };
 
-get('/api/recipes', async (ctx) => json({ recipes: await listRecipes(ctx.db, requireUser(ctx).id) }));
+get('/api/recipes', async (ctx) => json({ recipes: await listRecipes(ctx.db, requireUser(ctx).id) }), KEY);
 
 post('/api/recipes', async (ctx) => {
   const me = requireUser(ctx);
@@ -251,9 +260,9 @@ post('/api/recipes', async (ctx) => {
   });
   await ctx.db.batch(stmts);
   return json({ recipe: await recipeJson(ctx.db, await loadRecipe(ctx.db, id)) });
-});
+}, KEY);
 
-get('/api/recipes/:id', async (ctx) => json({ recipe: await recipeJson(ctx.db, await loadVisibleRecipe(ctx, ctx.params.id)) }));
+get('/api/recipes/:id', async (ctx) => json({ recipe: await recipeJson(ctx.db, await loadVisibleRecipe(ctx, ctx.params.id)) }), KEY);
 
 patch('/api/recipes/:id', async (ctx) => {
   const row = await loadOwnedRecipe(ctx, ctx.params.id);
@@ -293,7 +302,7 @@ patch('/api/recipes/:id', async (ctx) => {
       .run();
   }
   return json({ recipe: await recipeJson(ctx.db, await loadRecipe(ctx.db, row.id)) });
-});
+}, KEY);
 
 del('/api/recipes/:id', async (ctx) => {
   const row = await loadOwnedRecipe(ctx, ctx.params.id, 'delete a recipe');
@@ -334,7 +343,7 @@ post('/api/recipes/:id/save', async (ctx) => {
   ];
   await ctx.db.batch(stmts);
   return json({ recipe: await recipeJson(ctx.db, await loadRecipe(ctx.db, id)) });
-});
+}, KEY);
 
 post('/api/recipes/:id/comments', async (ctx) => {
   const me = requireUser(ctx);
@@ -404,20 +413,20 @@ get('/api/friends', async (ctx) => {
   );
   friends.sort((a, b) => a.name.localeCompare(b.name));
   return json({ friends });
-});
+}, KEY);
 
 get('/api/friends/recipes', async (ctx) => {
   const me = requireUser(ctx);
   const ids = await friendIdsOf(ctx.db, me.id);
   const lists = await Promise.all(ids.map((id) => listRecipes(ctx.db, id)));
   return json({ recipes: lists.flat() });
-});
+}, KEY);
 
 get('/api/friends/:id/recipes', async (ctx) => {
   const me = requireUser(ctx);
   if (!(await areFriends(ctx.db, me.id, ctx.params.id))) throw new HttpError(403, 'Not in your friends');
   return json({ recipes: await listRecipes(ctx.db, ctx.params.id) });
-});
+}, KEY);
 
 del('/api/friends/:id', async (ctx) => {
   const me = requireUser(ctx);
@@ -427,6 +436,126 @@ del('/api/friends/:id', async (ctx) => {
   return json({ ok: true });
 });
 
+// ---------- meal plan ----------
+
+const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
+
+function requireDate(d) {
+  if (!DATE_RE.test(d || '')) throw new HttpError(400, 'Expected a date like 2026-08-17');
+  return d;
+}
+
+/** Compact recipe shape for plan rows — enough to render a card and a grocery list. */
+async function planRecipe(ctx, recipeId, myId, friendIds) {
+  if (!recipeId) return null;
+  const r = await ctx.db
+    .prepare(
+      `SELECT r.id, r.owner_id, r.title, r.prep, r.cook, r.servings, r.ing, u.name AS owner_name
+       FROM recipes r JOIN users u ON u.id=r.owner_id WHERE r.id=?`
+    )
+    .bind(recipeId)
+    .first();
+  // A recipe you can no longer see (unfriended) is treated the same as a deleted one
+  if (!r || (r.owner_id !== myId && !friendIds.includes(r.owner_id))) return null;
+  const photo = await ctx.db
+    .prepare('SELECT key FROM photos WHERE recipe_id=? ORDER BY position,id LIMIT 1')
+    .bind(r.id)
+    .first();
+  return {
+    id: r.id,
+    title: r.title,
+    ownerId: r.owner_id,
+    ownerName: r.owner_name,
+    mine: r.owner_id === myId,
+    prep: r.prep,
+    cook: r.cook,
+    servings: r.servings,
+    ing: JSON.parse(r.ing),
+    photoUrl: photo ? photoUrl(photo.key) : null,
+  };
+}
+
+get('/api/plan', async (ctx) => {
+  const me = requireUser(ctx);
+  const url = new URL(ctx.request.url);
+  const start = requireDate(url.searchParams.get('start'));
+  const end = requireDate(url.searchParams.get('end'));
+  const { results } = await ctx.db
+    .prepare('SELECT * FROM plan_entries WHERE user_id=? AND date>=? AND date<=? ORDER BY date')
+    .bind(me.id, start, end)
+    .all();
+  const friendIds = await friendIdsOf(ctx.db, me.id);
+  const entries = await Promise.all(
+    results.map(async (e) => ({
+      date: e.date,
+      type: e.type,
+      text: e.text,
+      note: e.note || '',
+      recipe: e.type === 'recipe' ? await planRecipe(ctx, e.recipe_id, me.id, friendIds) : null,
+    }))
+  );
+  return json({ entries });
+}, KEY);
+
+// Upsert one day. Send `dinner` to set or clear the meal, `note` to set or
+// clear the note; omit either to leave it as it is.
+put('/api/plan/:date', async (ctx) => {
+  const me = requireUser(ctx);
+  const date = requireDate(ctx.params.date);
+  const body = await ctx.json();
+  const existing = await ctx.db
+    .prepare('SELECT * FROM plan_entries WHERE user_id=? AND date=?')
+    .bind(me.id, date)
+    .first();
+
+  let { type = null, recipe_id = null, text = null } = existing || {};
+  if ('dinner' in body) {
+    const d = body.dinner;
+    if (d === null) {
+      type = recipe_id = text = null;
+    } else if (d && d.type === 'recipe') {
+      const friendIds = await friendIdsOf(ctx.db, me.id);
+      const r = await planRecipe(ctx, d.recipeId, me.id, friendIds);
+      if (!r) throw new HttpError(404, 'That recipe is not in your book');
+      type = 'recipe';
+      recipe_id = r.id;
+      text = null;
+    } else if (d && d.type === 'leftovers') {
+      type = 'leftovers';
+      recipe_id = null;
+      text = null;
+    } else if (d && d.type === 'text') {
+      const t = String(d.text || '').trim();
+      if (!t) throw new HttpError(400, 'Type something first');
+      type = 'text';
+      recipe_id = null;
+      text = t.slice(0, 120);
+    } else {
+      throw new HttpError(400, 'Unknown plan entry');
+    }
+  }
+
+  const note = 'note' in body ? String(body.note || '').trim().slice(0, 200) : existing?.note || '';
+
+  if (!type && !note) {
+    await ctx.db.prepare('DELETE FROM plan_entries WHERE user_id=? AND date=?').bind(me.id, date).run();
+  } else {
+    await ctx.db
+      .prepare(
+        `INSERT INTO plan_entries (user_id,date,type,recipe_id,text,note,updated_at) VALUES (?,?,?,?,?,?,?)
+         ON CONFLICT(user_id,date) DO UPDATE SET type=excluded.type, recipe_id=excluded.recipe_id,
+           text=excluded.text, note=excluded.note, updated_at=excluded.updated_at`
+      )
+      .bind(me.id, date, type, recipe_id, text, note || null, nowIso())
+      .run();
+  }
+
+  const friendIds = await friendIdsOf(ctx.db, me.id);
+  return json({
+    entry: { date, type, text, note, recipe: type === 'recipe' ? await planRecipe(ctx, recipe_id, me.id, friendIds) : null },
+  });
+}, KEY);
+
 // ---------- import ----------
 
 post('/api/import', async (ctx) => {
@@ -434,6 +563,27 @@ post('/api/import', async (ctx) => {
   const url = String((await ctx.json()).url || '').trim();
   if (!url) throw new HttpError(400, 'Paste a recipe link first');
   return json({ draft: await importFromUrl(url) });
+}, KEY);
+
+// ---------- API keys ----------
+//
+// Cookie-only, all three: a key must never be able to mint or list keys, or
+// leaking one would be permanent.
+
+get('/api/keys', async (ctx) => json({ keys: await listApiKeys(ctx.db, requireUser(ctx).id) }));
+
+post('/api/keys', async (ctx) => {
+  const me = requireUser(ctx);
+  const { token, key } = await createApiKey(ctx.db, me.id, (await ctx.json()).name);
+  // In dev the Worker sits behind the Vite proxy, so the browser's origin is
+  // the one that will actually work in a config file
+  const origin = ctx.request.headers.get('origin') || new URL(ctx.request.url).origin;
+  return json({ token, key, mcpUrl: `${origin}/mcp` });
+});
+
+del('/api/keys/:id', async (ctx) => {
+  await revokeApiKey(ctx.db, requireUser(ctx).id, ctx.params.id);
+  return json({ ok: true });
 });
 
 // ---------- photo serving ----------
@@ -450,10 +600,35 @@ get('/uploads/:key', async (ctx) => {
   return new Response(object.body, { headers });
 });
 
+// ---------- calling our own routes ----------
+
+/**
+ * Run one of our own API routes in-process, as whoever `base` is signed in as.
+ * The MCP tools go through here so they share the web app's exact permission
+ * checks and response shapes instead of reaching into the database themselves.
+ */
+async function callApi(base, method, path, body) {
+  const url = new URL(path, new URL(base.request.url).origin);
+  for (const route of routes) {
+    if (route.method !== method) continue;
+    const match = route.pattern.exec(url);
+    if (!match) continue;
+    if (!route.key) throw new HttpError(403, `${method} ${path} is not available to API keys`);
+    const res = await route.handler({
+      ...base,
+      params: match.pathname.groups,
+      request: new Request(url, { method }),
+      json: async () => body || {},
+    });
+    return res.json();
+  }
+  throw new HttpError(404, `No route for ${method} ${path}`);
+}
+
 // ---------- entry point ----------
 
 export default {
-  async fetch(request, env) {
+  async fetch(request, env, execCtx) {
     const url = new URL(request.url);
     const ctx = {
       request,
@@ -470,13 +645,46 @@ export default {
       },
     };
 
+    /** Cookie or API key, whichever the caller brought. Sets ctx.user/ctx.key. */
+    const authenticate = async () => {
+      const token = bearerToken(request);
+      if (!token) {
+        ctx.user = await currentUser(request, ctx.db);
+        return;
+      }
+      const found = await userForToken(ctx.db, token);
+      if (!found) throw new HttpError(401, 'That API key isn’t valid — it may have been revoked');
+      ctx.user = found.user;
+      ctx.key = found.key;
+      execCtx?.waitUntil(touchApiKey(ctx.db, found.key.id));
+    };
+
+    // MCP lives outside the REST router: it is one endpoint that multiplexes
+    // every tool over JSON-RPC, and it takes API keys only — never a cookie.
+    if (url.pathname === '/mcp') {
+      try {
+        if (request.method === 'POST') await authenticate();
+        return await handleMcp(request, {
+          authed: !!ctx.key,
+          call: (method, path, body) => callApi(ctx, method, path, body),
+        });
+      } catch (err) {
+        const status = err instanceof HttpError ? err.status : 500;
+        if (!(err instanceof HttpError)) console.error(err.stack || err);
+        return json({ jsonrpc: '2.0', id: null, error: { code: -32000, message: err.message } }, { status });
+      }
+    }
+
     for (const route of routes) {
       if (route.method !== request.method) continue;
       const match = route.pattern.exec(url);
       if (!match) continue;
       ctx.params = match.pathname.groups;
       try {
-        ctx.user = await currentUser(request, ctx.db);
+        await authenticate();
+        if (ctx.key && !route.key) {
+          throw new HttpError(403, 'API keys can only reach recipes and the meal plan — sign in for this one');
+        }
         return await route.handler(ctx);
       } catch (err) {
         // Deliberate HttpErrors carry a message meant for the user; anything
@@ -487,7 +695,7 @@ export default {
       }
     }
 
-    // Unmatched /api or /uploads path (assets are handled before the Worker)
+    // Unmatched /api, /uploads or /mcp path (assets are handled before the Worker)
     return json({ error: 'Not found' }, { status: 404 });
   },
 };

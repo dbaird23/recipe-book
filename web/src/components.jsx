@@ -186,17 +186,27 @@ const FriendsIcon = ({ color }) => (
   </svg>
 );
 
-export function TabBar({ screen, onHome, onFriends }) {
-  const recipesFg = screen === 'home' ? 'var(--green)' : 'var(--label)';
-  const friendsFg = screen === 'friends' ? 'var(--green)' : 'var(--label)';
+const PlanIcon = ({ color }) => (
+  <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+    <rect x="4" y="5" width="16" height="16" rx="3" /><line x1="4" y1="10" x2="20" y2="10" />
+    <line x1="9" y1="3" x2="9" y2="7" /><line x1="15" y1="3" x2="15" y2="7" />
+  </svg>
+);
+
+export function TabBar({ screen, onHome, onPlan, onFriends }) {
+  const fg = (s) => (screen === s ? 'var(--green)' : 'var(--label)');
   return (
     <div className="tabbar">
-      <button onClick={onHome} style={{ color: recipesFg }}>
-        <BookIcon color={recipesFg} />
+      <button onClick={onHome} style={{ color: fg('home') }}>
+        <BookIcon color={fg('home')} />
         My Recipes
       </button>
-      <button onClick={onFriends} style={{ color: friendsFg }}>
-        <FriendsIcon color={friendsFg} />
+      <button onClick={onPlan} style={{ color: fg('plan') }}>
+        <PlanIcon color={fg('plan')} />
+        Plan
+      </button>
+      <button onClick={onFriends} style={{ color: fg('friends') }}>
+        <FriendsIcon color={fg('friends')} />
         Friends
       </button>
     </div>

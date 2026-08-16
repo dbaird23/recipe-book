@@ -9,7 +9,7 @@ function SectionLabel({ children, style }) {
 export default function Recipe({
   recipe, user, isMine, savedAlready,
   goBack, onEdit, onShare, onSaveToMine,
-  onUpdateNotes, onUpdateNut, onAddComment, onAddPhoto, onRemovePhoto, onRate,
+  onUpdateNotes, onUpdateNut, onAddComment, onDeleteComment, onAddPhoto, onRemovePhoto, onRate,
 }) {
   const [checked, setChecked] = useState({});
   const [mult, setMult] = useState(1);
@@ -280,7 +280,7 @@ export default function Recipe({
                 background: recipe.nutEdited ? '#f3ede4' : 'var(--green-soft)',
               }}
             >
-              {recipe.nutEdited ? 'EDITED' : 'AUTO'}
+              {recipe.nutEdited ? 'EXACT' : 'AUTO'}
             </span>
             {isMine && (
               <button className="btn-text-green" onClick={() => (nutEditOpen ? saveNut() : (setNutDraft({ ...recipe.nut }), setNutEditOpen(true)))}>
@@ -324,7 +324,7 @@ export default function Recipe({
               </div>
               <div style={{ fontSize: 11, color: '#b0b6aa', marginTop: 10, lineHeight: 1.4 }}>
                 {recipe.nutEdited
-                  ? 'Adjusted by hand.'
+                  ? 'From the recipe, not estimated.'
                   : 'Auto-calculated from ingredients. Add brands to your ingredients for exact numbers.'}
               </div>
             </>
@@ -337,7 +337,20 @@ export default function Recipe({
             <div key={c.id} style={{ display: 'flex', gap: 10 }}>
               <Avatar user={c.author} size={30} fontSize={12} />
               <div style={{ flex: 1 }}>
-                <div style={{ fontSize: 13, fontWeight: 600 }}>{c.author.id === user.id ? 'You' : c.author.name}</div>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                  <div style={{ fontSize: 13, fontWeight: 600, flex: 1 }}>
+                    {c.author.id === user.id ? 'You' : c.author.name}
+                  </div>
+                  {c.author.id === user.id && (
+                    <button
+                      className="btn-text-green"
+                      style={{ color: 'var(--red)', fontSize: 11.5, padding: '2px 0' }}
+                      onClick={() => { if (confirm('Delete this comment?')) onDeleteComment(c.id); }}
+                    >
+                      Delete
+                    </button>
+                  )}
+                </div>
                 <div style={{ fontSize: 14, lineHeight: 1.5, marginTop: 2, color: '#3c463c' }}>{c.text}</div>
                 {c.photoUrl && (
                   <img

@@ -321,6 +321,15 @@ export default function App() {
             applyRecipe(recipe);
             toast('Comment posted');
           }}
+          onDeleteComment={async (commentId) => {
+            try {
+              const { recipe } = await api.deleteComment(currentRecipe.id, commentId);
+              applyRecipe(recipe);
+              toast('Comment deleted');
+            } catch (e) {
+              toast(e.message);
+            }
+          }}
           onAddPhoto={async (files) => {
             // Uploaded one at a time so a single bad file doesn't sink the batch
             let recipe = null;

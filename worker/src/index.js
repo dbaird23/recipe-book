@@ -351,6 +351,22 @@ post('/api/recipes/:id/comments', async (ctx) => {
   return json({ recipe: await recipeJson(ctx.db, row) });
 });
 
+// You can delete your own comment, wherever it lives — including on a
+// friend's recipe. Nobody else's, not even the recipe owner's.
+del('/api/recipes/:id/comments/:commentId', async (ctx) => {
+  const me = requireUser(ctx);
+  const row = await loadVisibleRecipe(ctx, ctx.params.id);
+  const comment = await ctx.db
+    .prepare('SELECT * FROM comments WHERE id=? AND recipe_id=?')
+    .bind(ctx.params.commentId, row.id)
+    .first();
+  if (!comment) throw new HttpError(404, 'Comment not found');
+  if (comment.author_id !== me.id) throw new HttpError(403, 'You can only delete your own comments');
+  if (comment.photo_key && !/^https?:\/\//.test(comment.photo_key)) await ctx.env.PHOTOS.delete(comment.photo_key);
+  await ctx.db.prepare('DELETE FROM comments WHERE id=?').bind(comment.id).run();
+  return json({ recipe: await recipeJson(ctx.db, row) });
+});
+
 post('/api/recipes/:id/photos', async (ctx) => {
   const row = await loadOwnedRecipe(ctx, ctx.params.id, 'add photos');
   const form = await ctx.request.formData();

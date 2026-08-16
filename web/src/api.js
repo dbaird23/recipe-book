@@ -54,6 +54,7 @@ const realApi = {
     if (photoFile) fd.append('photo', photoFile);
     return request(`/api/recipes/${id}/comments`, { method: 'POST', body: fd });
   },
+  deleteComment: (id, commentId) => request(`/api/recipes/${id}/comments/${commentId}`, { method: 'DELETE' }),
   addPhoto: (id, file) => {
     const fd = new FormData();
     fd.append('photo', file);

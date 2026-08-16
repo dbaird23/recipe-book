@@ -216,6 +216,15 @@ export const mockApi = {
     save();
     return { recipe: r };
   },
+  deleteComment: async (id, commentId) => {
+    const r = findRecipe(id);
+    const c = r.comments.find((x) => x.id === commentId);
+    if (!c) throw new Error('Comment not found');
+    if (c.author.id !== state.me.id) throw new Error('You can only delete your own comments');
+    r.comments = r.comments.filter((x) => x.id !== commentId);
+    save();
+    return { recipe: r };
+  },
   addPhoto: async (id, file) => {
     const r = findRecipe(id);
     r.photos.push({ id: uid(), url: await fileToDataUrl(file), position: r.photos.length });

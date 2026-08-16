@@ -6,6 +6,13 @@
       "runtimeExecutable": "npm",
       "runtimeArgs": ["run", "dev"],
       "port": 5173
+    },
+    {
+      "name": "recipe-book-api",
+      "runtimeExecutable": "npm",
+      "runtimeArgs": ["run", "dev", "-w", "worker"],
+      "port": 8787,
+      "autoPort": false
     }
   ]
 }

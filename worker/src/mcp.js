@@ -8,7 +8,7 @@
 // The tools don't touch the database. Each one calls the same route handlers
 // the web app uses, so permissions, validation and shapes can never drift
 // between the two.
-import { HttpError, json } from './util.js';
+import { HttpError, json, PANTRY_LOCATIONS, pantrySkip } from './util.js';
 
 const PROTOCOL_VERSION = '2025-06-18';
 const SERVER_INFO = { name: 'recipe-book', title: 'Recipe Book', version: '1.0.0' };
@@ -82,6 +82,16 @@ const dinnerOf = (e) => {
 };
 
 const planDay = (e) => ({ date: e.date, dinner: dinnerOf(e), note: e.note || undefined });
+
+const pantryItem = (i) => ({
+  itemId: i.id,
+  location: i.location,
+  name: i.name,
+  quantity: i.qty,
+  unit: i.unit || undefined,
+});
+
+const LOCATION = { type: 'string', enum: PANTRY_LOCATIONS, description: 'Where it lives in the kitchen' };
 
 function matches(recipe, q) {
   const haystack = [recipe.title, ...recipe.tags, ...recipe.ing].join(' ').toLowerCase();
@@ -263,23 +273,117 @@ const TOOLS = [
   },
 
   {
+    name: 'get_pantry',
+    title: 'Read the pantry',
+    description:
+      'What is already in the kitchen — the pantry, the fridge and the freezer. The grocery list skips these, so read it before suggesting a shop.',
+    inputSchema: {
+      type: 'object',
+      properties: { location: { ...LOCATION, description: 'Only this shelf. Omit for everything.' } },
+    },
+    run: async (call, args) => {
+      const { items } = await call('GET', '/api/pantry');
+      const kept = args.location ? items.filter((i) => i.location === args.location) : items;
+      return { count: kept.length, items: kept.map(pantryItem) };
+    },
+  },
+
+  {
+    name: 'add_pantry_item',
+    title: 'Add to the pantry',
+    description:
+      'Put something in the kitchen. Either pass a typed line as `item` ("2 cans black beans") and it will be read apart, or give name, quantity and unit yourself.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        location: LOCATION,
+        item: { type: 'string', description: 'A whole line, e.g. "2 cans black beans" or "Olive oil"' },
+        name: { type: 'string', description: 'Just the name, when you would rather not have `item` parsed' },
+        quantity: { type: 'number', minimum: 0, description: 'How many. Defaults to 1.' },
+        unit: { type: 'string', description: 'e.g. "cans", "lbs", "bottle". Leave out for a plain count.' },
+      },
+      required: ['location'],
+    },
+    run: async (call, args) => {
+      const body = { location: args.location };
+      if (args.name) Object.assign(body, { name: args.name, qty: args.quantity ?? 1, unit: args.unit || '' });
+      else body.text = args.item;
+      const { item } = await call('POST', '/api/pantry', body);
+      return { added: true, ...pantryItem(item) };
+    },
+  },
+
+  {
+    name: 'update_pantry_item',
+    title: 'Change a pantry item',
+    description: 'Change the name, count, unit or shelf of something already in the kitchen. Send only what changes.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        itemId: { type: 'string' },
+        name: { type: 'string' },
+        quantity: { type: 'number', minimum: 0 },
+        unit: { type: 'string' },
+        location: LOCATION,
+      },
+      required: ['itemId'],
+    },
+    run: async (call, args) => {
+      const body = {};
+      if ('name' in args) body.name = args.name;
+      if ('quantity' in args) body.qty = args.quantity;
+      if ('unit' in args) body.unit = args.unit;
+      if ('location' in args) body.location = args.location;
+      const { item } = await call('PATCH', `/api/pantry/${encodeURIComponent(args.itemId)}`, body);
+      return { updated: true, ...pantryItem(item) };
+    },
+  },
+
+  {
+    name: 'remove_pantry_item',
+    title: 'Take something out of the pantry',
+    description: 'Remove an item from the kitchen — you used it up, or it went off.',
+    inputSchema: {
+      type: 'object',
+      properties: { itemId: { type: 'string' } },
+      required: ['itemId'],
+    },
+    run: async (call, args) => {
+      await call('DELETE', `/api/pantry/${encodeURIComponent(args.itemId)}`);
+      return { removed: true, itemId: args.itemId };
+    },
+  },
+
+  {
     name: 'grocery_list',
     title: 'Build a grocery list',
     description:
-      'Every ingredient from the recipes planned in a date range, grouped by recipe. Quantities are left exactly as the recipes write them — nothing is combined or converted.',
+      'Every ingredient from the recipes planned in a date range, grouped by recipe, minus anything already in the kitchen. Quantities are left exactly as the recipes write them — nothing is combined or converted.',
     inputSchema: {
       type: 'object',
       properties: {
         start: { type: 'string', description: 'First day, YYYY-MM-DD' },
         end: { type: 'string', description: 'Last day, YYYY-MM-DD (inclusive)' },
+        ignorePantry: { type: 'boolean', description: 'List everything, including what you already have. Defaults to false.' },
       },
       required: ['start', 'end'],
     },
     run: async (call, args) => {
-      const { entries } = await call('GET', `/api/plan?start=${encodeURIComponent(args.start)}&end=${encodeURIComponent(args.end)}`);
+      const [{ entries }, { items: pantry }] = await Promise.all([
+        call('GET', `/api/plan?start=${encodeURIComponent(args.start)}&end=${encodeURIComponent(args.end)}`),
+        args.ignorePantry ? Promise.resolve({ items: [] }) : call('GET', '/api/pantry'),
+      ]);
+      const skipped = new Map();
       const fromRecipes = entries
         .filter((e) => e.recipe)
-        .map((e) => ({ date: e.date, recipeId: e.recipe.id, title: e.recipe.title, servings: e.recipe.servings, ingredients: e.recipe.ing }));
+        .map((e) => {
+          const ingredients = e.recipe.ing.filter((line) => {
+            const have = pantrySkip(line, pantry);
+            if (have) skipped.set(line, have.location);
+            return !have;
+          });
+          return { date: e.date, recipeId: e.recipe.id, title: e.recipe.title, servings: e.recipe.servings, ingredients };
+        });
       // Nights that are takeout, leftovers or a plain note have no ingredients
       // but still belong in the answer — they're meals you don't shop for.
       const noIngredients = entries
@@ -290,6 +394,10 @@ const TOOLS = [
         end: args.end,
         itemCount: fromRecipes.reduce((n, r) => n + r.ingredients.length, 0),
         recipes: fromRecipes,
+        // Named so it's obvious these were dropped on purpose, not missed
+        alreadyInKitchen: skipped.size
+          ? [...skipped].map(([ingredient, location]) => ({ ingredient, location }))
+          : undefined,
         nothingToBuy: noIngredients.length ? noIngredients : undefined,
       };
     },
@@ -320,7 +428,8 @@ async function handleMessage(message, call) {
         instructions:
           'Recipe Book is a small, invite-only recipe collection shared between family and friends. ' +
           'Recipes belong to people: you can read and plan with anyone’s, but only edit your own. ' +
-          'Dates are always YYYY-MM-DD in the planner.',
+          'Dates are always YYYY-MM-DD in the planner. ' +
+          'The pantry is what the member already has in the kitchen; the grocery list leaves those ingredients out.',
       });
 
     case 'ping':

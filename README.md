@@ -19,6 +19,10 @@ that runs entirely in your browser with sample data (single-player; changes stay
 - **Recipe pages** — photo gallery, tap-to-check ingredients, numbered directions, personal notes,
   per-serving nutrition (auto-estimated, adjustable), comments with photos, and a **1×–4× servings
   multiplier** that rescales ingredient quantities in place
+- **Pantry** — what you already keep in the pantry, fridge and freezer, typed the way you'd say it
+  ("2 cans black beans"); the grocery list leaves those ingredients out and shows you what it skipped.
+  **Take inventory** walks the shelves in one pass — step each count up or down, and anything you
+  zero out drops off when you save
 - **Friends** — each member has their own book; browse a friend's recipes, search across all friends,
   save any recipe into your own book (a clean copy — no tags or comments carried over, credited to
   them, and independent of their later edits)
@@ -27,7 +31,7 @@ that runs entirely in your browser with sample data (single-player; changes stay
 - **Tags** — built-in meal/tag chips plus your own custom tags, reusable across recipes and filters
 - **Google sign-in** — with a passwordless dev sign-in fallback for local development
 - **AI & API access** — each member can issue API keys and point an AI assistant (Cursor, Claude,
-  anything that speaks MCP) at their recipes and meal plan — see below
+  anything that speaks MCP) at their recipes, pantry and meal plan — see below
 
 ## Stack
 
@@ -77,7 +81,11 @@ the key in an `Authorization: Bearer` header.
 | `import_recipe_from_url` | Parse a recipe off a web page, optionally saving it straight away |
 | `get_meal_plan` | What's planned for dinner across a date range |
 | `set_meal_plan_day` | Set or clear one day's dinner and note |
-| `grocery_list` | Every ingredient from the recipes planned in a date range, grouped by recipe |
+| `get_pantry` | What's already in the kitchen — pantry, fridge and freezer |
+| `add_pantry_item` | Put something in the kitchen, from a typed line or explicit fields |
+| `update_pantry_item` | Change an item's name, count, unit or shelf |
+| `remove_pantry_item` | Take something out — used up, or gone off |
+| `grocery_list` | Every ingredient from the recipes planned in a date range, grouped by recipe, minus what the pantry already covers |
 
 The tools call the same route handlers the web app does, so permissions and validation can't drift
 between the two.

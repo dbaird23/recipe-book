@@ -10,7 +10,10 @@ import {
 import { importFromUrl } from './importer.js';
 import { bearerToken, userForToken, touchApiKey, listApiKeys, createApiKey, revokeApiKey } from './apikeys.js';
 import { handleMcp } from './mcp.js';
-import { HttpError, uid, nowIso, pairKey, json, autoNut, sanitizeRecipeInput, putImage, photoUrl } from './util.js';
+import {
+  HttpError, uid, nowIso, pairKey, json, autoNut, sanitizeRecipeInput, putImage, photoUrl,
+  PANTRY_LOCATIONS, parsePantryEntry,
+} from './util.js';
 
 // ---------- tiny router ----------
 
@@ -554,6 +557,118 @@ put('/api/plan/:date', async (ctx) => {
   return json({
     entry: { date, type, text, note, recipe: type === 'recipe' ? await planRecipe(ctx, recipe_id, me.id, friendIds) : null },
   });
+}, KEY);
+
+// ---------- pantry ----------
+
+const pantryJson = (r) => ({ id: r.id, location: r.location, name: r.name, qty: r.qty, unit: r.unit || '' });
+
+function requireLocation(v) {
+  const loc = String(v || '').trim().toLowerCase();
+  if (!PANTRY_LOCATIONS.includes(loc)) throw new HttpError(400, 'Location must be pantry, fridge or freezer');
+  return loc;
+}
+
+/**
+ * The item a write is asking for, from either a typed line (`text`) or
+ * explicit fields. Renaming with a line that doesn't lead with a number keeps
+ * the count it already had, so "Kidney beans" → "Black beans" stays at 3.
+ */
+function pantryFields(body, existing = null) {
+  if (typeof body.text === 'string') {
+    const p = parsePantryEntry(body.text);
+    if (!p.name) throw new HttpError(400, 'Type something to add first');
+    const recount = p.hadQty || !existing;
+    return { name: p.name.slice(0, 80), qty: recount ? p.qty : existing.qty, unit: recount ? p.unit : existing.unit };
+  }
+  const name = String(body.name ?? existing?.name ?? '').trim();
+  if (!name) throw new HttpError(400, 'Give the item a name');
+  const qty = 'qty' in body ? Math.max(0, +body.qty || 0) : existing?.qty ?? 1;
+  const unit = 'unit' in body ? String(body.unit || '').trim().toLowerCase().slice(0, 20) : existing?.unit ?? '';
+  return { name: name.slice(0, 80), qty, unit };
+}
+
+const listPantry = async (db, userId) => {
+  const { results } = await db
+    .prepare('SELECT * FROM pantry_items WHERE user_id=? ORDER BY created_at, rowid')
+    .bind(userId)
+    .all();
+  return results.map(pantryJson);
+};
+
+async function loadPantryItem(ctx, id) {
+  const me = requireUser(ctx);
+  const row = await ctx.db.prepare('SELECT * FROM pantry_items WHERE id=? AND user_id=?').bind(id, me.id).first();
+  if (!row) throw new HttpError(404, 'That item isn’t in your kitchen');
+  return row;
+}
+
+async function assertNoClash(ctx, userId, location, name, exceptId = null) {
+  const clash = await ctx.db
+    .prepare('SELECT id FROM pantry_items WHERE user_id=? AND location=? AND name=? COLLATE NOCASE AND id<>?')
+    .bind(userId, location, name, exceptId || '')
+    .first();
+  if (clash) throw new HttpError(409, `Already in your ${location}`);
+}
+
+get('/api/pantry', async (ctx) => json({ items: await listPantry(ctx.db, requireUser(ctx).id) }), KEY);
+
+post('/api/pantry', async (ctx) => {
+  const me = requireUser(ctx);
+  const body = await ctx.json();
+  const location = requireLocation(body.location);
+  const fields = pantryFields(body);
+  await assertNoClash(ctx, me.id, location, fields.name);
+  const id = uid();
+  const now = nowIso();
+  await ctx.db
+    .prepare('INSERT INTO pantry_items (id,user_id,location,name,qty,unit,created_at,updated_at) VALUES (?,?,?,?,?,?,?,?)')
+    .bind(id, me.id, location, fields.name, fields.qty, fields.unit, now, now)
+    .run();
+  return json({ item: { id, location, ...fields } });
+}, KEY);
+
+patch('/api/pantry/:id', async (ctx) => {
+  const me = requireUser(ctx);
+  const row = await loadPantryItem(ctx, ctx.params.id);
+  const body = await ctx.json();
+  const location = 'location' in body ? requireLocation(body.location) : row.location;
+  const fields = pantryFields(body, pantryJson(row));
+  await assertNoClash(ctx, me.id, location, fields.name, row.id);
+  await ctx.db
+    .prepare('UPDATE pantry_items SET location=?,name=?,qty=?,unit=?,updated_at=? WHERE id=?')
+    .bind(location, fields.name, fields.qty, fields.unit, nowIso(), row.id)
+    .run();
+  return json({ item: { id: row.id, location, ...fields } });
+}, KEY);
+
+del('/api/pantry/:id', async (ctx) => {
+  const row = await loadPantryItem(ctx, ctx.params.id);
+  await ctx.db.prepare('DELETE FROM pantry_items WHERE id=?').bind(row.id).run();
+  return json({ ok: true });
+}, KEY);
+
+// The end of a "take inventory" pass down the shelves: every item you send
+// gets that count, and a count of zero means you're out, so the row goes.
+// Items you leave out are untouched.
+put('/api/pantry', async (ctx) => {
+  const me = requireUser(ctx);
+  const updates = (await ctx.json()).items;
+  if (!Array.isArray(updates) || !updates.length) throw new HttpError(400, 'Nothing to save');
+  const now = nowIso();
+  let removed = 0;
+  const stmts = updates.slice(0, 200).map((u) => {
+    const qty = Math.max(0, +u.qty || 0);
+    if (qty > 0) {
+      return ctx.db
+        .prepare('UPDATE pantry_items SET qty=?, updated_at=? WHERE id=? AND user_id=?')
+        .bind(qty, now, String(u.id), me.id);
+    }
+    removed++;
+    return ctx.db.prepare('DELETE FROM pantry_items WHERE id=? AND user_id=?').bind(String(u.id), me.id);
+  });
+  await ctx.db.batch(stmts);
+  return json({ items: await listPantry(ctx.db, me.id), removed });
 }, KEY);
 
 // ---------- import ----------

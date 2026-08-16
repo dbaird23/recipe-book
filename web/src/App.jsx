@@ -7,8 +7,9 @@ import { Friends, FriendDetail } from './screens/Friends.jsx';
 import Recipe from './screens/Recipe.jsx';
 import { AddStep1, AddStep2 } from './screens/Add.jsx';
 import Plan from './screens/Plan.jsx';
+import Pantry from './screens/Pantry.jsx';
 import { ProfileSheet, ApiKeysSheet, FilterSheet, ShareSheet, InviteSheet, RemoveFriendSheet, PlanPickerSheet, GrocerySheet } from './sheets.jsx';
-import { matchesFilters, customTagsFrom, nextSort, DAY_NAMES, mondayOf, addDays, isoDate } from './util.js';
+import { matchesFilters, customTagsFrom, nextSort, pantrySkip, DAY_NAMES, mondayOf, addDays, isoDate } from './util.js';
 
 const EMPTY_FILTERS = { selMeals: [], selTags: [], query: '', rating: 0 };
 
@@ -48,6 +49,9 @@ export default function App() {
       return {};
     }
   });
+  // pantry — what's already in the kitchen, so the grocery list can skip it
+  const [pantry, setPantry] = useState([]);
+
   const [toastMsg, setToastMsg] = useState(null);
   const toastTimer = useRef(null);
 
@@ -58,10 +62,13 @@ export default function App() {
   }, []);
 
   const loadAll = useCallback(async () => {
-    const [mine, fr, all] = await Promise.all([api.myRecipes(), api.friends(), api.allFriendRecipes()]);
+    const [mine, fr, all, kitchen] = await Promise.all([
+      api.myRecipes(), api.friends(), api.allFriendRecipes(), api.pantry(),
+    ]);
     setMyRecipes(mine.recipes);
     setFriends(fr.friends);
     setAllFriendRecipes(all.recipes);
+    setPantry(kitchen.items);
     return mine.recipes;
   }, []);
 
@@ -114,6 +121,7 @@ export default function App() {
     setMyRecipes([]);
     setFriends([]);
     setAllFriendRecipes([]);
+    setPantry([]);
   }
 
   // Keep a mutated recipe in sync across every list that may hold it
@@ -162,16 +170,25 @@ export default function App() {
     ...allFriendRecipes.map((r) => ({ ...r, ownerLabel: r.ownerName })),
   ];
 
+  // The week's shopping, minus whatever the pantry already covers. Skipped
+  // lines are collected so the sheet can show its work — a loose name match
+  // will occasionally drop something you did need.
+  const skippedByText = new Map();
   const groceryGroups = DAY_NAMES.map((name, i) => {
     const date = isoDate(addDays(mondayOf(weekOffset), i));
     const entry = planEntries.find((e) => e.date === date);
     if (!entry?.recipe) return null;
-    return {
-      key: date,
-      title: `${name.slice(0, 3).toUpperCase()} · ${entry.recipe.title.toUpperCase()}`,
-      items: entry.recipe.ing.map((text, j) => ({ key: `${date}-${j}`, text })),
-    };
+    const items = entry.recipe.ing
+      .map((text, j) => {
+        const have = pantrySkip(text, pantry);
+        if (have) skippedByText.set(text, have.location);
+        return have ? null : { key: `${date}-${j}`, text };
+      })
+      .filter(Boolean);
+    if (!items.length) return null;
+    return { key: date, title: `${name.slice(0, 3).toUpperCase()} · ${entry.recipe.title.toUpperCase()}`, items };
   }).filter(Boolean);
+  const grocerySkipped = [...skippedByText].map(([text, location]) => ({ text, location }));
 
   function openRecipe(r, from) {
     setCurrentRecipe(r);
@@ -270,7 +287,7 @@ export default function App() {
     );
   }
 
-  const showNav = screen === 'home' || screen === 'friends' || screen === 'plan';
+  const showNav = ['home', 'friends', 'plan', 'pantry'].includes(screen);
   const activeList = screen === 'friend' ? friendRecipes : myRecipes;
   const filterResultCount = activeList.filter((r) => matchesFilters(r, filters)).length;
   const customTags = customTagsFrom([...myRecipes, ...allFriendRecipes]);
@@ -311,6 +328,16 @@ export default function App() {
             }
           }}
           onOpenGrocery={() => setSheet('grocery')}
+        />
+      )}
+
+      {screen === 'pantry' && (
+        <Pantry
+          items={pantry}
+          onAdd={addPantryItem}
+          onRename={renamePantryItem}
+          onRemove={removePantryItem}
+          onSaveInventory={savePantryInventory}
         />
       )}
 
@@ -463,6 +490,7 @@ export default function App() {
           screen={screen}
           onHome={() => { setScreen('home'); setFilters({ ...filters, query: '' }); }}
           onPlan={() => setScreen('plan')}
+          onPantry={() => setScreen('pantry')}
           onFriends={() => { setScreen('friends'); setFilters({ ...filters, query: '' }); }}
         />
       )}
@@ -516,6 +544,7 @@ export default function App() {
       {sheet === 'grocery' && (
         <GrocerySheet
           groups={groceryGroups}
+          skipped={grocerySkipped}
           checked={groceryChecked}
           onToggle={(key) =>
             setGroceryChecked((prev) => {

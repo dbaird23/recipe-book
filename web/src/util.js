@@ -176,6 +176,58 @@ export function weekTitle(offset) {
   return offset > 0 ? `In ${offset} weeks` : `${Math.abs(offset)} weeks ago`;
 }
 
+// ---- pantry ----
+
+export const PANTRY_LOCATIONS = [
+  { key: 'pantry', label: 'Pantry' },
+  { key: 'fridge', label: 'Fridge' },
+  { key: 'freezer', label: 'Freezer' },
+];
+
+/** "2 heads", "1 bottle", "3" — the count as it reads on a shelf label. */
+export const qtyLabel = (qty, unit) => `${+(+qty).toFixed(2)}${unit ? ` ${unit}` : ''}`;
+
+/** How an item reads when you tap it to edit: "2 heads Garlic", or just "Parmesan". */
+export const pantryLine = (item) =>
+  item.qty !== 1 || item.unit ? `${qtyLabel(item.qty, item.unit)} ${item.name}` : item.name;
+
+// Words the demo backend lifts out of "2 cans black beans" as the unit —
+// anything else after the number is part of the name. The real backend parses
+// server-side; this copy exists so the static demo behaves the same.
+const PANTRY_UNITS = new Set([
+  'can', 'cans', 'lb', 'lbs', 'pound', 'pounds', 'oz', 'box', 'boxes', 'bag', 'bags',
+  'package', 'packages', 'pkg', 'jar', 'jars', 'bottle', 'bottles', 'pack', 'packs',
+  'dozen', 'head', 'heads', 'stick', 'sticks', 'bunch', 'bunches', 'gallon', 'quart',
+  'loaf', 'loaves', 'carton', 'cartons', 'container', 'containers', 'block', 'blocks',
+]);
+
+/** "2 cans black beans" → 2 × "black beans" in cans. Mirrors worker/src/util.js. */
+export function parsePantryEntry(text) {
+  const v = String(text ?? '').trim();
+  const hadQty = /^\d/.test(v);
+  const m = v.match(/^(\d+(?:\.\d+)?)\s*([A-Za-z]+)?\s+(.+)$/);
+  if (!m) return { name: v, qty: 1, unit: '', hadQty };
+  const unit = (m[2] || '').toLowerCase();
+  if (m[2] && PANTRY_UNITS.has(unit)) return { name: m[3].trim(), qty: parseFloat(m[1]), unit, hadQty };
+  return { name: (m[2] ? `${m[2]} ` : '') + m[3].trim(), qty: parseFloat(m[1]), unit: '', hadQty };
+}
+
+/**
+ * The pantry item that covers an ingredient line, or null. "Kidney beans"
+ * covers "2 cans kidney beans, drained". Deliberately loose and blind to a
+ * trailing plural: a wrong skip costs one trip down an aisle, and the grocery
+ * sheet lists every skip back to you. Names under three characters never
+ * match — too many false hits. The Worker keeps the same rule for the MCP
+ * grocery list, in worker/src/util.js.
+ */
+export function pantrySkip(text, items) {
+  const t = String(text).toLowerCase();
+  return items.find((it) => {
+    const name = it.name.toLowerCase().replace(/s$/, '');
+    return name.length > 2 && t.includes(name);
+  }) || null;
+}
+
 // ---- ingredient scaling (1×–4× view on the recipe page) ----
 
 const UNI_FRAC = {

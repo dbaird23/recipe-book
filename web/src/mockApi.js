@@ -1,7 +1,7 @@
 // In-browser API for the static demo build (GitHub Pages). Same interface as
 // the real api client, backed by localStorage — single-player, no server.
-import { DEMO_MY_RECIPES, DEMO_FRIENDS } from './demoData.js';
-import { autoNut } from './util.js';
+import { DEMO_MY_RECIPES, DEMO_FRIENDS, DEMO_PANTRY } from './demoData.js';
+import { autoNut, parsePantryEntry } from './util.js';
 
 const KEY = 'recipe-book-demo-v1';
 const uid = () => (crypto.randomUUID ? crypto.randomUUID() : String(Math.random()).slice(2));
@@ -64,6 +64,7 @@ function seed(meName, meEmail) {
       ...f,
       recipes: DEMO_FRIENDS[i].recipes.map((r) => mkRecipe(r, f.id, f.name, authorsByName)),
     })),
+    pantry: DEMO_PANTRY.map((it) => ({ id: uid(), ...it })),
   };
 }
 
@@ -285,6 +286,52 @@ export const mockApi = {
     if (prev.type || prev.note) state.plan.push(prev);
     save();
     return { entry: { ...prev, recipe: prev.type === 'recipe' ? planRecipeOf(prev.recipeId) : null } };
+  },
+
+  pantry: async () => ({ items: state.pantry || [] }),
+  addPantryItem: async (location, text) => {
+    const p = parsePantryEntry(text);
+    if (!p.name) throw new Error('Type something to add first');
+    state.pantry = state.pantry || [];
+    if (state.pantry.some((x) => x.location === location && x.name.toLowerCase() === p.name.toLowerCase())) {
+      throw new Error(`Already in your ${location}`);
+    }
+    const item = { id: uid(), location, name: p.name, qty: p.qty, unit: p.unit };
+    state.pantry.push(item);
+    save();
+    return { item };
+  },
+  renamePantryItem: async (id, text) => {
+    const item = (state.pantry || []).find((x) => x.id === id);
+    if (!item) throw new Error('That item isn’t in your kitchen');
+    const p = parsePantryEntry(text);
+    if (!p.name) throw new Error('Type something first');
+    if (state.pantry.some((x) => x !== item && x.location === item.location && x.name.toLowerCase() === p.name.toLowerCase())) {
+      throw new Error(`Already in your ${item.location}`);
+    }
+    // A rename that doesn't lead with a number keeps the count it already had
+    Object.assign(item, { name: p.name, qty: p.hadQty ? p.qty : item.qty, unit: p.hadQty ? p.unit : item.unit });
+    save();
+    return { item };
+  },
+  removePantryItem: async (id) => {
+    state.pantry = (state.pantry || []).filter((x) => x.id !== id);
+    save();
+    return { ok: true };
+  },
+  savePantryInventory: async (updates) => {
+    let removed = 0;
+    for (const u of updates) {
+      const item = (state.pantry || []).find((x) => x.id === u.id);
+      if (!item) continue;
+      const qty = Math.max(0, +u.qty || 0);
+      if (qty > 0) item.qty = qty;
+      else removed++;
+    }
+    const gone = new Set(updates.filter((u) => !(+u.qty > 0)).map((u) => u.id));
+    state.pantry = (state.pantry || []).filter((x) => !gone.has(x.id));
+    save();
+    return { items: state.pantry, removed };
   },
 
   importUrl: async () => {

@@ -43,6 +43,26 @@ export const DEMO_MY_RECIPES = [
   },
 ];
 
+// A starter kitchen, so the demo's grocery list has something to skip
+export const DEMO_PANTRY = [
+  { location: 'pantry', name: 'Olive oil', qty: 1, unit: 'bottle' },
+  { location: 'pantry', name: 'Garlic', qty: 2, unit: 'heads' },
+  { location: 'pantry', name: 'Chili powder', qty: 1, unit: 'jar' },
+  { location: 'pantry', name: 'Cumin', qty: 1, unit: 'jar' },
+  { location: 'pantry', name: 'Kidney beans', qty: 3, unit: 'cans' },
+  { location: 'pantry', name: 'Rice', qty: 2, unit: 'lbs' },
+  { location: 'pantry', name: 'Soy sauce', qty: 1, unit: 'bottle' },
+  { location: 'pantry', name: 'Flour', qty: 1, unit: 'bag' },
+  { location: 'fridge', name: 'Eggs', qty: 1, unit: 'dozen' },
+  { location: 'fridge', name: 'Butter', qty: 2, unit: 'sticks' },
+  { location: 'fridge', name: 'Parmesan', qty: 1, unit: '' },
+  { location: 'fridge', name: 'Lemon', qty: 3, unit: '' },
+  { location: 'fridge', name: 'Milk', qty: 1, unit: 'gallon' },
+  { location: 'freezer', name: 'Ground beef', qty: 2, unit: 'lbs' },
+  { location: 'freezer', name: 'Frozen peas', qty: 1, unit: 'bag' },
+  { location: 'freezer', name: 'Chicken thighs', qty: 3, unit: 'packages' },
+];
+
 export const DEMO_FRIENDS = [
   {
     name: 'Betsy',

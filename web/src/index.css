@@ -169,6 +169,16 @@ input, textarea, select { font-size: 16px; }
   font-size: 11.5px; font-weight: 600;
 }
 
+/* A row of buttons floating just clear of the tab bar — the pantry's
+   inventory save bar. 51px is the tab bar's own content height (10px of top
+   padding plus a 24px icon, a 3px gap and a 14px label); the rest matches its
+   bottom padding so the two never overlap on a notched phone. */
+.action-bar {
+  position: absolute; left: 0; right: 0; z-index: 6;
+  bottom: calc(59px + max(20px, env(safe-area-inset-bottom)));
+  padding: 0 20px; display: flex; gap: 10px;
+}
+
 /* --- fab --- */
 .fab {
   position: absolute; right: 20px; bottom: 96px; width: 54px; height: 54px; border-radius: 50%;

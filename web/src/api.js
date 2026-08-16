@@ -75,6 +75,12 @@ const realApi = {
 
   plan: (start, end) => request(`/api/plan?start=${start}&end=${end}`),
   setPlanDay: (date, body) => request(`/api/plan/${date}`, { method: 'PUT', body }),
+
+  pantry: () => request('/api/pantry'),
+  addPantryItem: (location, text) => request('/api/pantry', { method: 'POST', body: { location, text } }),
+  renamePantryItem: (id, text) => request(`/api/pantry/${id}`, { method: 'PATCH', body: { text } }),
+  removePantryItem: (id) => request(`/api/pantry/${id}`, { method: 'DELETE' }),
+  savePantryInventory: (items) => request('/api/pantry', { method: 'PUT', body: { items } }),
 };
 
 export const api = DEMO ? mockApi : realApi;

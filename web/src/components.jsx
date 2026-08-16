@@ -117,6 +117,21 @@ export function Sheet({ onClose, children }) {
   );
 }
 
+/** The tick box used down the pantry shelves. */
+export function Check({ on, style }) {
+  return (
+    <div
+      style={{
+        width: 18, height: 18, borderRadius: 5, flex: '0 0 auto', display: 'grid', placeItems: 'center',
+        border: `1.5px solid ${on ? 'var(--green)' : '#d8ccc4'}`, background: on ? 'var(--green)' : 'var(--card)',
+        color: '#fff', fontSize: 11, ...style,
+      }}
+    >
+      {on ? '✓' : ''}
+    </div>
+  );
+}
+
 export function ChipToggle({ label, on, onToggle }) {
   return (
     <button className={`chip${on ? ' on' : ''}`} onClick={onToggle}>
@@ -193,7 +208,14 @@ const PlanIcon = ({ color }) => (
   </svg>
 );
 
-export function TabBar({ screen, onHome, onPlan, onFriends }) {
+const PantryIcon = ({ color }) => (
+  <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+    <rect x="5.5" y="2.5" width="13" height="19" rx="2.5" /><line x1="12" y1="2.5" x2="12" y2="21.5" />
+    <line x1="10" y1="9" x2="10" y2="12.5" /><line x1="14" y1="9" x2="14" y2="12.5" />
+  </svg>
+);
+
+export function TabBar({ screen, onHome, onPlan, onPantry, onFriends }) {
   const fg = (s) => (screen === s ? 'var(--green)' : 'var(--label)');
   return (
     <div className="tabbar">
@@ -204,6 +226,10 @@ export function TabBar({ screen, onHome, onPlan, onFriends }) {
       <button onClick={onPlan} style={{ color: fg('plan') }}>
         <PlanIcon color={fg('plan')} />
         Plan
+      </button>
+      <button onClick={onPantry} style={{ color: fg('pantry') }}>
+        <PantryIcon color={fg('pantry')} />
+        Pantry
       </button>
       <button onClick={onFriends} style={{ color: fg('friends') }}>
         <FriendsIcon color={fg('friends')} />

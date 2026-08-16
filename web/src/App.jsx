@@ -7,9 +7,9 @@ import { Friends, FriendDetail } from './screens/Friends.jsx';
 import Recipe from './screens/Recipe.jsx';
 import { AddStep1, AddStep2 } from './screens/Add.jsx';
 import { ProfileSheet, FilterSheet, ShareSheet, InviteSheet, RemoveFriendSheet } from './sheets.jsx';
-import { matchesFilters, customTagsFrom } from './util.js';
+import { matchesFilters, customTagsFrom, nextSort } from './util.js';
 
-const EMPTY_FILTERS = { selMeals: [], selTags: [], query: '' };
+const EMPTY_FILTERS = { selMeals: [], selTags: [], query: '', rating: 0 };
 
 export default function App() {
   const [config, setConfig] = useState(null);
@@ -227,9 +227,9 @@ export default function App() {
           filters={filters}
           setSearch={(q) => setFilters({ ...filters, query: q })}
           openFilter={() => setSheet('filter')}
-          clearFilters={() => setFilters({ ...filters, selMeals: [], selTags: [] })}
+          clearFilters={() => setFilters({ ...filters, selMeals: [], selTags: [], rating: 0 })}
           sort={sort}
-          toggleSort={() => setSort(sort === 'alpha' ? 'newest' : 'alpha')}
+          toggleSort={() => setSort(nextSort(sort))}
           openRecipe={(r) => openRecipe(r, 'home')}
           openProfile={() => setSheet('profile')}
           startAdd={() => { setDraft(null); setEditingId(null); setScreen('add1'); }}
@@ -256,9 +256,9 @@ export default function App() {
           filters={filters}
           setSearch={(q) => setFilters({ ...filters, query: q })}
           openFilter={() => setSheet('filter')}
-          clearFilters={() => setFilters({ ...filters, selMeals: [], selTags: [] })}
+          clearFilters={() => setFilters({ ...filters, selMeals: [], selTags: [], rating: 0 })}
           sort={sort}
-          toggleSort={() => setSort(sort === 'alpha' ? 'newest' : 'alpha')}
+          toggleSort={() => setSort(nextSort(sort))}
           goFriends={() => { setScreen('friends'); setFilters(EMPTY_FILTERS); }}
           openRecipe={(r) => openRecipe(r, 'friend')}
           openRemove={() => setSheet('remove')}
@@ -307,6 +307,14 @@ export default function App() {
           onUpdateNut={async (nut, edited) => {
             const { recipe } = await api.updateRecipe(currentRecipe.id, { nut, nutEdited: edited });
             applyRecipe(recipe);
+          }}
+          onRate={async (rating) => {
+            try {
+              const { recipe } = await api.rateRecipe(currentRecipe.id, rating);
+              applyRecipe(recipe);
+            } catch (e) {
+              toast(e.message);
+            }
           }}
           onAddComment={async (text, photo) => {
             const { recipe } = await api.addComment(currentRecipe.id, text, photo);

@@ -68,6 +68,7 @@ async function recipeJson(db, row) {
     from: row.from_name,
     nut: JSON.parse(row.nut),
     nutEdited: !!row.nut_edited,
+    rating: row.rating || 0,
     createdAt: row.created_at,
     photos: photos.results.map((p) => ({ id: p.id, url: photoUrl(p.key), position: p.position })),
     comments: comments.results.map((c) => ({
@@ -265,6 +266,11 @@ patch('/api/recipes/:id', async (ctx) => {
       .prepare('UPDATE recipes SET nut=?, nut_edited=?, updated_at=? WHERE id=?')
       .bind(JSON.stringify(nut), body.nutEdited === false ? 0 : 1, now, row.id)
       .run();
+  } else if ('rating' in body && Object.keys(body).length === 1) {
+    // Only the owner rates their own recipe — loadOwnedRecipe already enforced that
+    const rating = Math.round(+body.rating || 0);
+    if (rating < 0 || rating > 5) throw new HttpError(400, 'Rating must be between 0 and 5 stars');
+    await ctx.db.prepare('UPDATE recipes SET rating=?, updated_at=? WHERE id=?').bind(rating, now, row.id).run();
   } else if (typeof body.notes === 'string' && Object.keys(body).length === 1) {
     await ctx.db.prepare('UPDATE recipes SET notes=?, updated_at=? WHERE id=?').bind(body.notes.trim(), now, row.id).run();
   } else {

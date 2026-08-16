@@ -1,5 +1,5 @@
 import { useRef, useState } from 'react';
-import { Avatar, Photo } from '../components.jsx';
+import { Avatar, Photo, Stars } from '../components.jsx';
 import { autoNut, scaleIngredient } from '../util.js';
 
 function SectionLabel({ children, style }) {
@@ -9,7 +9,7 @@ function SectionLabel({ children, style }) {
 export default function Recipe({
   recipe, user, isMine, savedAlready,
   goBack, onEdit, onShare, onSaveToMine,
-  onUpdateNotes, onUpdateNut, onAddComment, onAddPhoto, onRemovePhoto,
+  onUpdateNotes, onUpdateNut, onAddComment, onAddPhoto, onRemovePhoto, onRate,
 }) {
   const [checked, setChecked] = useState({});
   const [mult, setMult] = useState(1);
@@ -123,6 +123,20 @@ export default function Recipe({
 
         <div style={{ fontSize: 23, fontWeight: 700, letterSpacing: -0.4, marginTop: 14, lineHeight: 1.2 }}>{recipe.title}</div>
         <div style={{ fontSize: 13, color: 'var(--muted)', marginTop: 4 }}>{ownerLine}</div>
+
+        {/* You rate your own recipes; a friend's rating shows read-only */}
+        {(isMine || recipe.rating > 0) && (
+          <div style={{ display: 'flex', alignItems: 'center', gap: 9, marginTop: 9 }}>
+            <Stars value={recipe.rating || 0} size={19} gap={3} onRate={isMine ? onRate : undefined} />
+            <span style={{ fontSize: 12.5, color: 'var(--faint)' }}>
+              {recipe.rating > 0
+                ? isMine
+                  ? 'Your rating'
+                  : `${recipe.ownerName}’s rating`
+                : 'Rate this recipe'}
+            </span>
+          </div>
+        )}
 
         <div style={{ display: 'flex', gap: 8, marginTop: 12 }}>
           {[['PREP', `${recipe.prep} min`], ['COOK', cookLabel], ['SERVES', recipe.servings * mult]].map(([k, v]) => (

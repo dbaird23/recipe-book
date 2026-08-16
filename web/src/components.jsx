@@ -1,4 +1,4 @@
-import { avatarColor, metaOf } from './util.js';
+import { avatarColor, metaOf, ratingFilterLabel, SORT_LABELS } from './util.js';
 
 export function Avatar({ user, size = 34, fontSize = 14, onClick }) {
   const Tag = onClick ? 'button' : 'div';
@@ -27,6 +27,39 @@ export function Photo({ photo, className = '', style, label = 'photo' }) {
   );
 }
 
+const StarShape = ({ filled, size, color }) => (
+  <svg width={size} height={size} viewBox="0 0 24 24" style={{ display: 'block' }}
+    fill={filled ? color : 'none'} stroke={color} strokeWidth="1.6" strokeLinejoin="round">
+    <path d="M12 3 l2.85 5.8 6.4 .93 -4.63 4.5 1.09 6.37 L12 17.6 l-5.71 3 1.09 -6.37 L2.75 9.73 l6.4 -.93 z" />
+  </svg>
+);
+
+/**
+ * Star rating. Read-only by default; pass onRate to let the owner set it.
+ * Tapping the current rating again clears it.
+ */
+export function Stars({ value = 0, size = 14, gap = 2, onRate, dim = false }) {
+  const color = value ? 'var(--star)' : 'var(--faint)';
+  return (
+    <div style={{ display: 'inline-flex', gap, alignItems: 'center', opacity: dim ? 0.75 : 1 }}>
+      {[1, 2, 3, 4, 5].map((n) =>
+        onRate ? (
+          <button
+            key={n}
+            onClick={(e) => { e.stopPropagation(); onRate(n === value ? 0 : n); }}
+            aria-label={`${n} star${n > 1 ? 's' : ''}`}
+            style={{ background: 'none', border: 0, padding: 2, margin: -2, cursor: 'pointer', lineHeight: 0 }}
+          >
+            <StarShape filled={n <= value} size={size} color={n <= value ? 'var(--star)' : 'var(--faint)'} />
+          </button>
+        ) : (
+          <StarShape key={n} filled={n <= value} size={size} color={color} />
+        )
+      )}
+    </div>
+  );
+}
+
 export function TagRow({ tags, max = 3 }) {
   if (!tags?.length) return null;
   return (
@@ -44,8 +77,11 @@ export function RecipeRow({ recipe, metaPrefix, onOpen }) {
       <Photo photo={recipe.photos?.[0]} className="thumb" />
       <div style={{ flex: 1, minWidth: 0 }}>
         <div style={{ fontSize: 15.5, fontWeight: 600, lineHeight: 1.25 }}>{recipe.title}</div>
-        <div style={{ fontSize: 12.5, color: 'var(--muted)', marginTop: 2 }}>
-          {metaPrefix ? `${metaPrefix} · ` : ''}{metaOf(recipe)}
+        <div style={{ display: 'flex', alignItems: 'center', gap: 7, marginTop: 2, flexWrap: 'wrap' }}>
+          <span style={{ fontSize: 12.5, color: 'var(--muted)' }}>
+            {metaPrefix ? `${metaPrefix} · ` : ''}{metaOf(recipe)}
+          </span>
+          {recipe.rating > 0 && <Stars value={recipe.rating} size={11.5} />}
         </div>
         <TagRow tags={recipe.tags} />
       </div>
@@ -65,6 +101,7 @@ export function RecipeGridCard({ recipe, onOpen }) {
       <div style={{ padding: '10px 12px 12px' }}>
         <div style={{ fontSize: 14, fontWeight: 600, lineHeight: 1.25 }}>{recipe.title}</div>
         <div style={{ fontSize: 12, color: 'var(--muted)', marginTop: 3 }}>{metaOf(recipe)}</div>
+        {recipe.rating > 0 && <div style={{ marginTop: 5 }}><Stars value={recipe.rating} size={11.5} /></div>}
       </div>
     </button>
   );
@@ -101,7 +138,8 @@ const SortIcon = () => (
 );
 
 export function FilterSortBar({ filters, onOpenFilter, onClear, sort, onToggleSort }) {
-  const n = filters.selMeals.length + filters.selTags.length;
+  const ratingLabel = ratingFilterLabel(filters.rating);
+  const n = filters.selMeals.length + filters.selTags.length + (ratingLabel ? 1 : 0);
   const active = n > 0;
   return (
     <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '0 20px 12px', flex: '0 0 auto' }}>
@@ -114,7 +152,7 @@ export function FilterSortBar({ filters, onOpenFilter, onClear, sort, onToggleSo
         Filters{active ? ` · ${n}` : ''}
       </button>
       <div style={{ flex: 1, minWidth: 0, fontSize: 12, color: '#8a9686', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-        {[...filters.selMeals, ...filters.selTags].join(', ')}
+        {[...filters.selMeals, ...filters.selTags, ...(ratingLabel ? [ratingLabel] : [])].join(', ')}
       </div>
       {active && (
         <button className="btn-text-green" style={{ flex: '0 0 auto', fontSize: 12.5, padding: 4 }} onClick={onClear}>
@@ -127,7 +165,7 @@ export function FilterSortBar({ filters, onOpenFilter, onClear, sort, onToggleSo
         onClick={onToggleSort}
       >
         <SortIcon />
-        {sort === 'alpha' ? 'A–Z' : 'Newest'}
+        {SORT_LABELS[sort]}
       </button>
     </div>
   );

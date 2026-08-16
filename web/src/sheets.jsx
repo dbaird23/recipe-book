@@ -1,7 +1,7 @@
 import { useRef, useState } from 'react';
 import { api } from './api.js';
 import { Avatar, Sheet, ChipToggle } from './components.jsx';
-import { MEALS, TAGS } from './util.js';
+import { MEALS, TAGS, RATING_FILTERS } from './util.js';
 
 export function ProfileSheet({ user, layout, setLayout, onClose, onSaved, onSignOut, toast }) {
   const [name, setName] = useState(user.name);
@@ -91,6 +91,17 @@ export function FilterSheet({ filters, setFilters, customTags = [], resultCount,
     <Sheet onClose={onClose}>
       <div className="sheet-title">Filter recipes</div>
       <div className="sheet-sub">Pick any number of meals and tags.</div>
+      <div className="section-label" style={{ fontSize: 11, margin: '16px 0 8px' }}>Rating</div>
+      <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+        {RATING_FILTERS.map((o) => (
+          <ChipToggle
+            key={String(o.value)}
+            label={o.label}
+            on={filters.rating === o.value}
+            onToggle={() => setFilters({ ...filters, rating: filters.rating === o.value ? 0 : o.value })}
+          />
+        ))}
+      </div>
       <div className="section-label" style={{ fontSize: 11, margin: '16px 0 8px' }}>Meal</div>
       <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
         {MEALS.map((t) => (
@@ -107,7 +118,7 @@ export function FilterSheet({ filters, setFilters, customTags = [], resultCount,
         <button
           className="btn-secondary"
           style={{ flex: 1, color: 'var(--chip-fg)', fontSize: 14, padding: 12 }}
-          onClick={() => setFilters({ ...filters, selMeals: [], selTags: [] })}
+          onClick={() => setFilters({ ...filters, selMeals: [], selTags: [], rating: 0 })}
         >
           Clear all
         </button>

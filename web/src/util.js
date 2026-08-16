@@ -114,16 +114,39 @@ export function customTagsFrom(recipes) {
   return [...found].sort((a, b) => a.localeCompare(b));
 }
 
-export function matchesFilters(r, { selMeals, selTags, query }) {
+export function matchesFilters(r, { selMeals, selTags, query, rating = 0 }) {
   const q = query.trim().toLowerCase();
   const matchQ = !q || r.title.toLowerCase().includes(q) || r.tags.some((t) => t.toLowerCase().includes(q));
+  const stars = r.rating || 0;
+  // rating: 0 = any, 'unrated' = not yet rated, 3/4/5 = that many stars or more
+  const matchRating = rating === 0 || (rating === 'unrated' ? stars === 0 : stars >= rating);
   return (
     (selMeals.length === 0 || selMeals.some((m) => r.tags.includes(m))) &&
     (selTags.length === 0 || selTags.some((t) => r.tags.includes(t))) &&
+    matchRating &&
     matchQ
   );
 }
 
+export const RATING_FILTERS = [
+  { value: 5, label: '5 stars' },
+  { value: 4, label: '4+ stars' },
+  { value: 3, label: '3+ stars' },
+  { value: 'unrated', label: 'Unrated' },
+];
+
+export const ratingFilterLabel = (v) => RATING_FILTERS.find((o) => o.value === v)?.label || null;
+
+// Sort cycles newest → A–Z → top rated
+export const SORTS = ['newest', 'alpha', 'rating'];
+export const SORT_LABELS = { newest: 'Newest', alpha: 'A–Z', rating: 'Top rated' };
+export const nextSort = (s) => SORTS[(SORTS.indexOf(s) + 1) % SORTS.length];
+
 export function sortRecipes(list, sort) {
-  return sort === 'alpha' ? [...list].sort((a, b) => a.title.localeCompare(b.title)) : list;
+  if (sort === 'alpha') return [...list].sort((a, b) => a.title.localeCompare(b.title));
+  // Unrated recipes sink to the bottom; ties break alphabetically
+  if (sort === 'rating') {
+    return [...list].sort((a, b) => (b.rating || 0) - (a.rating || 0) || a.title.localeCompare(b.title));
+  }
+  return list;
 }

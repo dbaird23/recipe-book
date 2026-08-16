@@ -45,6 +45,7 @@ const realApi = {
   createRecipe: (body) => request('/api/recipes', { method: 'POST', body }),
   getRecipe: (id) => request(`/api/recipes/${id}`),
   updateRecipe: (id, body) => request(`/api/recipes/${id}`, { method: 'PATCH', body }),
+  rateRecipe: (id, rating) => request(`/api/recipes/${id}`, { method: 'PATCH', body: { rating } }),
   deleteRecipe: (id) => request(`/api/recipes/${id}`, { method: 'DELETE' }),
   saveRecipe: (id) => request(`/api/recipes/${id}/save`, { method: 'POST' }),
   addComment: (id, text, photoFile) => {

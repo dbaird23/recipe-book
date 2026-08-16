@@ -32,6 +32,7 @@ function mkRecipe(src, ownerId, ownerName, authorsByName) {
     from: src.from || null,
     nut: src.nut || autoNut((src.ing || []).length),
     nutEdited: false,
+    rating: src.rating || 0,
     createdAt: new Date().toISOString(),
     photos: [],
     comments: (src.comments || []).map((c) => ({
@@ -157,6 +158,8 @@ export const mockApi = {
     if (body.nut && Object.keys(body).length <= 2) {
       r.nut = { cal: +body.nut.cal || 0, pro: +body.nut.pro || 0, carb: +body.nut.carb || 0, fat: +body.nut.fat || 0 };
       r.nutEdited = body.nutEdited !== false;
+    } else if ('rating' in body && Object.keys(body).length === 1) {
+      r.rating = Math.max(0, Math.min(5, Math.round(+body.rating || 0)));
     } else if (typeof body.notes === 'string' && Object.keys(body).length === 1) {
       r.notes = body.notes;
     } else {
@@ -192,6 +195,7 @@ export const mockApi = {
       from: src.ownerName,
       tags: [],
       comments: [],
+      rating: 0,
       photos: src.photos.map((p) => ({ ...p, id: uid() })),
       createdAt: new Date().toISOString(),
     };

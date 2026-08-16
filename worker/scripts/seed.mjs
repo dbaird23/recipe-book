@@ -63,11 +63,11 @@ for (const a of everyone) {
 function addRecipe(ownerId, r) {
   const id = randomUUID();
   lines.push(
-    `INSERT INTO recipes (id,owner_id,title,prep,cook,servings,tags,ing,dir,notes,source,from_name,nut,nut_edited,created_at,updated_at) VALUES (` +
+    `INSERT INTO recipes (id,owner_id,title,prep,cook,servings,tags,ing,dir,notes,source,from_name,nut,nut_edited,rating,created_at,updated_at) VALUES (` +
       [
         q(id), q(ownerId), q(r.title), r.prep || 0, r.cook || 0, r.servings || 1,
         q(JSON.stringify(r.tags || [])), q(JSON.stringify(r.ing || [])), q(JSON.stringify(r.dir || [])),
-        q(r.notes || ''), q(r.source || null), q(r.from || null), q(JSON.stringify(r.nut)), 0, q(now), q(now),
+        q(r.notes || ''), q(r.source || null), q(r.from || null), q(JSON.stringify(r.nut)), 0, r.rating || 0, q(now), q(now),
       ].join(',') +
       `);`
   );

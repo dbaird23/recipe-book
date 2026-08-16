@@ -95,7 +95,9 @@ function Row({ item, inv, qty, editing, editDraft, setEditDraft, onStartEdit, on
  * Two modes. Day to day you add, rename and remove single items. "Take
  * inventory" is the walk down the shelves: every item gets a count you can
  * step up or down, and anything you zero out is gone when you save — which is
- * far less tapping than removing a dozen things one at a time.
+ * far less tapping than removing a dozen things one at a time. You can add
+ * during that walk too, since half of taking stock is finding things you never
+ * wrote down.
  */
 export default function Pantry({ items, onAdd, onRename, onRemove, onSaveInventory }) {
   const [drafts, setDrafts] = useState({});
@@ -103,7 +105,9 @@ export default function Pantry({ items, onAdd, onRename, onRemove, onSaveInvento
   const [editDraft, setEditDraft] = useState('');
   const [inv, setInv] = useState(null); // { [id]: qty } while taking inventory, else null
 
-  const kept = inv ? items.filter((it) => inv[it.id] > 0).length : 0;
+  // An item added mid-inventory has no entry yet, so its own count stands in
+  const qtyOf = (it) => (inv && inv[it.id] !== undefined ? inv[it.id] : it.qty);
+  const kept = inv ? items.filter((it) => qtyOf(it) > 0).length : 0;
   const allKept = kept === items.length;
 
   function startInventory() {
@@ -112,20 +116,24 @@ export default function Pantry({ items, onAdd, onRename, onRemove, onSaveInvento
   }
 
   function toggleAll() {
-    setInv(Object.fromEntries(items.map((it) => [it.id, allKept ? 0 : inv[it.id] || it.qty || 1])));
+    setInv(Object.fromEntries(items.map((it) => [it.id, allKept ? 0 : qtyOf(it) || it.qty || 1])));
   }
 
   function saveInventory() {
-    const changed = items.filter((it) => inv[it.id] !== it.qty).map((it) => ({ id: it.id, qty: inv[it.id] }));
+    const changed = items.filter((it) => qtyOf(it) !== it.qty).map((it) => ({ id: it.id, qty: qtyOf(it) }));
     setInv(null);
     onSaveInventory(changed);
   }
 
-  function add(location) {
+  async function add(location) {
     const text = (drafts[location] || '').trim();
     if (!text) return;
     setDrafts((d) => ({ ...d, [location]: '' }));
-    onAdd(location, text);
+    const added = await onAdd(location, text);
+    // Count what just arrived as present, so saving doesn't read it as a zero
+    if (inv && added?.length) {
+      setInv((prev) => ({ ...prev, ...Object.fromEntries(added.map((it) => [it.id, it.qty])) }));
+    }
   }
 
   function commitEdit(item) {
@@ -138,7 +146,9 @@ export default function Pantry({ items, onAdd, onRename, onRemove, onSaveInvento
     <div className="screen">
       <div className="top-row">
         <div className="h1">Pantry</div>
-        {items.length > 0 && (
+        {/* Available on an empty pantry too — taking stock of a bare shelf is
+            how you fill it, now that the walk can add as well as subtract */}
+        {(!inv || items.length > 0) && (
           <button
             className="btn-pill-outline"
             style={{ whiteSpace: 'nowrap', ...(inv ? { background: 'var(--green-soft)' } : null) }}
@@ -151,7 +161,7 @@ export default function Pantry({ items, onAdd, onRename, onRemove, onSaveInvento
 
       <div style={{ padding: '0 20px 10px', fontSize: 12.5, color: 'var(--muted)' }}>
         {inv
-          ? 'Adjust counts with − / +. Zero means you’re out.'
+          ? 'Adjust counts with − / +. Zero means you’re out. Add anything you find.'
           : items.length === 0
             ? 'Add what you keep on hand and the grocery list will stop asking for it.'
             : `${items.length} ${items.length === 1 ? 'item' : 'items'} on hand · skipped when building your grocery list`}
@@ -189,25 +199,38 @@ export default function Pantry({ items, onAdd, onRename, onRemove, onSaveInvento
                 />
               ))}
 
-              {!inv && (
-                <div style={{ display: 'flex', gap: 8, marginTop: 10 }}>
-                  <input
-                    className="input"
-                    value={drafts[loc.key] || ''}
-                    onChange={(e) => setDrafts((d) => ({ ...d, [loc.key]: e.target.value }))}
-                    onKeyDown={(e) => { if (e.key === 'Enter') add(loc.key); }}
-                    placeholder="e.g. 2 cans black beans"
-                    style={{ flex: 1, minWidth: 0, background: '#faf8f3', borderRadius: 8, padding: '7px 10px' }}
-                  />
-                  <button
-                    className="btn-pill-solid"
-                    style={{ flex: '0 0 auto', borderRadius: 8, padding: '7px 14px', fontSize: 12.5 }}
-                    onClick={() => add(loc.key)}
-                  >
-                    Add
-                  </button>
-                </div>
-              )}
+              {/* A textarea rather than an input so a dictated run of items
+                  stays visible and correctable instead of scrolling out of
+                  sight. It grows with the text; Enter still adds, since the
+                  separators that matter come from speech as commas. */}
+              <div style={{ display: 'flex', gap: 8, marginTop: 10, alignItems: 'flex-start' }}>
+                <textarea
+                  className="input"
+                  rows={1}
+                  value={drafts[loc.key] || ''}
+                  onChange={(e) => setDrafts((d) => ({ ...d, [loc.key]: e.target.value }))}
+                  onInput={(e) => { e.target.style.height = 'auto'; e.target.style.height = `${e.target.scrollHeight}px`; }}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter') {
+                      e.preventDefault();
+                      e.target.style.height = 'auto';
+                      add(loc.key);
+                    }
+                  }}
+                  placeholder="2 cans black beans, rice, 3 onions"
+                  style={{
+                    flex: 1, minWidth: 0, background: '#faf8f3', borderRadius: 8, padding: '7px 10px',
+                    resize: 'none', overflow: 'hidden', lineHeight: 1.4, fontFamily: 'inherit',
+                  }}
+                />
+                <button
+                  className="btn-pill-solid"
+                  style={{ flex: '0 0 auto', borderRadius: 8, padding: '7px 14px', fontSize: 12.5 }}
+                  onClick={() => add(loc.key)}
+                >
+                  Add
+                </button>
+              </div>
             </div>
           );
         })}

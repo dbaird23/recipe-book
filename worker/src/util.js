@@ -64,8 +64,27 @@ const PANTRY_UNITS = new Set([
  * line led with a number, which is how an edit tells "rename it" from
  * "rename it and recount it".
  */
-export function parsePantryEntry(text) {
+// Dictation writes small numbers as words and leaves in the "of" nobody types
+// — "two cans of black beans". Both are straightened out before the line is
+// read apart, so a dictated shelf reads the same as a typed one. Mirrored in
+// web/src/util.js.
+const NUMBER_WORDS = {
+  a: 1, an: 1, one: 1, two: 2, three: 3, four: 4, five: 5, six: 6, seven: 7, eight: 8,
+  nine: 9, ten: 10, eleven: 11, twelve: 12, fifteen: 15, twenty: 20,
+};
+
+/** "two cans of black beans" → "2 cans black beans". */
+export function normalizeSpoken(text) {
   const v = String(text ?? '').trim();
+  const lead = v.match(/^([A-Za-z]+)\b\s*/);
+  const n = lead && NUMBER_WORDS[lead[1].toLowerCase()];
+  const withQty = n ? `${n} ${v.slice(lead[0].length)}` : v;
+  // Only after a unit — "1 bag of rice" is a bag of rice, "Bag of Holding" isn't
+  return withQty.replace(/^(\d+(?:\.\d+)?\s+[A-Za-z]+)\s+of\s+/i, '$1 ');
+}
+
+export function parsePantryEntry(text) {
+  const v = normalizeSpoken(text);
   const hadQty = /^\d/.test(v);
   const m = v.match(/^(\d+(?:\.\d+)?)\s*([A-Za-z]+)?\s+(.+)$/);
   if (!m) return { name: v, qty: 1, unit: '', hadQty };

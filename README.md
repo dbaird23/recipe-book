@@ -19,10 +19,11 @@ that runs entirely in your browser with sample data (single-player; changes stay
 - **Recipe pages** — photo gallery, tap-to-check ingredients, numbered directions, personal notes,
   per-serving nutrition (auto-estimated, adjustable), comments with photos, and a **1×–4× servings
   multiplier** that rescales ingredient quantities in place
-- **Pantry** — what you already keep in the pantry, fridge and freezer, typed the way you'd say it
-  ("2 cans black beans"); the grocery list leaves those ingredients out and shows you what it skipped.
-  **Take inventory** walks the shelves in one pass — step each count up or down, and anything you
-  zero out drops off when you save
+- **Pantry** — what you already keep in the pantry, fridge and freezer, typed *or dictated* the way
+  you'd say it: "two cans of black beans, a bag of rice and three onions" lands as three items, spoken
+  numbers and all. The grocery list leaves those ingredients out and shows you what it skipped.
+  **Take inventory** walks the shelves in one pass — step each count up or down, add whatever you find
+  along the way, and anything you zero out drops off when you save
 - **Plan** — a week at a time, with breakfast, lunch and dinner on every day. Each meal takes a
   recipe (yours or a friend's), "leftovers", or anything you type ("Takeout", "Date night"), plus a
   note for the day; clear one meal or the whole day in a tap

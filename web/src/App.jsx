@@ -10,7 +10,7 @@ import Plan from './screens/Plan.jsx';
 import Pantry from './screens/Pantry.jsx';
 import Groceries from './screens/Groceries.jsx';
 import { ProfileSheet, ApiKeysSheet, FilterSheet, ShareSheet, InviteSheet, RemoveFriendSheet, PlanPickerSheet } from './sheets.jsx';
-import { matchesFilters, customTagsFrom, nextSort, buildGroceryList, MEAL_SLOTS, mondayOf, addDays, isoDate } from './util.js';
+import { matchesFilters, customTagsFrom, nextSort, buildGroceryList, splitPantryEntries, MEAL_SLOTS, mondayOf, addDays, isoDate } from './util.js';
 
 const EMPTY_FILTERS = { selMeals: [], selTags: [], query: '', rating: 0 };
 
@@ -208,13 +208,26 @@ export default function App() {
     }
   }
 
+  // One typed or dictated line can carry a shelf's worth of items, so each is
+  // added in turn and the result reported once rather than a toast per item.
   async function addPantryItem(location, text) {
-    try {
-      const { item } = await api.addPantryItem(location, text);
-      setPantry((prev) => [...prev, item]);
-    } catch (e) {
-      toast(e.message);
+    const added = [];
+    let already = 0;
+    for (const line of splitPantryEntries(text)) {
+      try {
+        const { item } = await api.addPantryItem(location, line);
+        added.push(item);
+      } catch (e) {
+        if (/already/i.test(e.message)) already++;
+        else toast(e.message);
+      }
     }
+    if (added.length) setPantry((prev) => [...prev, ...added]);
+    if (added.length > 1 || already) {
+      const had = already ? ` · ${already} already there` : '';
+      toast(`${added.length} ${added.length === 1 ? 'item' : 'items'} added${had}`);
+    }
+    return added;
   }
 
   async function renamePantryItem(id, text) {

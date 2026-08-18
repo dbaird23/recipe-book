@@ -200,14 +200,32 @@ function AddRow({ onAdd }) {
  *
  * Ticking something off takes it off the list rather than greying it out — what
  * you want in front of you in a shop is what you still have to find. The ones
- * you've got are folded away at the bottom, a tap from coming back.
+ * you've got are folded away at the bottom, a tap from coming back, and any
+ * aisle you don't walk down folds away too.
  */
 export default function Groceries({
   weekOffset, setWeekOffset, sections, skipped, removed, total, checked, onToggle, onAdd, onRemove, onRestore, onOpenRecipe,
 }) {
   const [showSkipped, setShowSkipped] = useState(false);
   const [showDone, setShowDone] = useState(false);
+  // Which aisles are folded away — a standing preference, not a per-week one:
+  // the aisle you never walk down is the same aisle every week.
+  const [collapsed, setCollapsed] = useState(() => {
+    try {
+      return JSON.parse(localStorage.getItem('rb-grocery-collapsed') || '{}');
+    } catch {
+      return {};
+    }
+  });
   const monday = mondayOf(weekOffset);
+
+  function toggleAisle(key) {
+    setCollapsed((prev) => {
+      const next = { ...prev, [key]: !prev[key] };
+      localStorage.setItem('rb-grocery-collapsed', JSON.stringify(next));
+      return next;
+    });
+  }
 
   const left = sections
     .map((s) => ({ ...s, items: s.items.filter((it) => !checked[it.key]) }))
@@ -237,24 +255,44 @@ export default function Groceries({
       <AddRow onAdd={onAdd} />
 
       <div className="scroll" style={{ padding: '2px 20px 100px', display: 'flex', flexDirection: 'column', gap: 14 }}>
-        {left.map((s) => (
-          <div key={s.key}>
-            <div className="section-label" style={{ fontSize: 11.5, marginBottom: 6 }}>{s.label}</div>
-            {/* No side padding: the rows carry it, so a swiped-open Delete
-                reaches the edge of the card rather than stopping short */}
-            <div className="card" style={{ padding: 0, overflow: 'hidden' }}>
-              {s.items.map((item) => (
-                <ItemRow
-                  key={item.key}
-                  item={item}
-                  onToggle={() => onToggle(item.key)}
-                  onOpenRecipe={onOpenRecipe}
-                  onRemove={onRemove}
-                />
-              ))}
+        {left.map((s) => {
+          const shut = !!collapsed[s.key];
+          return (
+            <div key={s.key}>
+              <button
+                onClick={() => toggleAisle(s.key)}
+                aria-expanded={!shut}
+                style={{
+                  display: 'flex', alignItems: 'center', justifyContent: 'space-between', width: '100%',
+                  border: 'none', background: 'none', padding: 0, marginBottom: shut ? 0 : 6, cursor: 'pointer', textAlign: 'left',
+                }}
+              >
+                <div style={{ display: 'flex', alignItems: 'center', gap: 7 }}>
+                  <span style={{ color: 'var(--faint)', fontSize: 11, lineHeight: 1 }}>{shut ? '▸' : '▾'}</span>
+                  <span className="section-label" style={{ fontSize: 11.5 }}>{s.label}</span>
+                </div>
+                <span style={{ fontSize: 12, color: 'var(--faint)' }}>
+                  {s.items.length} {s.items.length === 1 ? 'item' : 'items'}
+                </span>
+              </button>
+              {/* No side padding: the rows carry it, so a swiped-open Delete
+                  reaches the edge of the card rather than stopping short */}
+              {!shut && (
+                <div className="card" style={{ padding: 0, overflow: 'hidden' }}>
+                  {s.items.map((item) => (
+                    <ItemRow
+                      key={item.key}
+                      item={item}
+                      onToggle={() => onToggle(item.key)}
+                      onOpenRecipe={onOpenRecipe}
+                      onRemove={onRemove}
+                    />
+                  ))}
+                </div>
+              )}
             </div>
-          </div>
-        ))}
+          );
+        })}
 
         {left.length === 0 && (
           <div style={{ textAlign: 'center', color: 'var(--faint)', fontSize: 13, padding: 24, lineHeight: 1.6 }}>

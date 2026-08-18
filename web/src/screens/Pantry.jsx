@@ -2,9 +2,12 @@ import { useState } from 'react';
 import { Check } from '../components.jsx';
 import { PANTRY_LOCATIONS, pantryLine, qtyLabel } from '../util.js';
 
+// The divider sits on top of each row: the add box is above the list now, so
+// this separates the first item from it and leaves no dangling line under the
+// last one.
 const ROW = {
   display: 'flex', gap: 10, alignItems: 'center',
-  padding: '8px 0', borderBottom: '1px solid #f4f1ea',
+  padding: '8px 0', borderTop: '1px solid #f4f1ea',
 };
 
 const STEP_BTN = {
@@ -42,14 +45,26 @@ function Row({ item, inv, qty, out, editing, editDraft, setEditDraft, onStartEdi
   }
 
   return (
-    <div style={{ ...ROW, cursor: inv ? 'pointer' : 'default' }} onClick={inv ? onToggleOut : undefined}>
-      {inv && <Check on={!out} />}
+    <div style={ROW}>
+      {/* Only the box crosses an item out. The padding buys a thumb-sized
+          target without moving anything, and the row itself stays inert so a
+          tap that lands beside the box does nothing at all. */}
+      {inv && (
+        <button
+          onClick={onToggleOut}
+          aria-pressed={!out}
+          aria-label={out ? `${item.name} — out` : `${item.name} — in stock`}
+          style={{ flex: '0 0 auto', display: 'flex', border: 'none', background: 'none', cursor: 'pointer', padding: 7, margin: -7 }}
+        >
+          <Check on={!out} />
+        </button>
+      )}
       <div
         onClick={inv ? undefined : onStartEdit}
         style={{
           flex: 1, minWidth: 0, fontSize: 13.5, color: out ? 'var(--faint)' : 'var(--ink)',
           textDecoration: out ? 'line-through' : 'none',
-          cursor: inv ? 'pointer' : 'text',
+          cursor: inv ? 'default' : 'text',
         }}
       >
         {item.name}
@@ -94,10 +109,11 @@ function Row({ item, inv, qty, out, editing, editDraft, setEditDraft, onStartEdi
  * the other two.
  *
  * Two modes. Day to day you add, rename, count up and down, and remove single
- * items. "Take inventory" is the walk down the shelves: tap an item to cross it
- * out as gone — the count stays put, so a mis-tap costs nothing — and anything
- * still crossed out when you save is removed. You can add during that walk too,
- * since half of taking stock is finding things you never wrote down.
+ * items. "Take inventory" is the walk down the shelves: untick the box beside
+ * anything that's gone — only the box, and the count stays put, so a mis-tap
+ * costs nothing — and everything still unticked when you save is removed. You
+ * can add during that walk too, since half of taking stock is finding things
+ * you never wrote down.
  */
 export default function Pantry({ items, onAdd, onRename, onRemove, onSetQty, onSaveInventory }) {
   const [drafts, setDrafts] = useState({});
@@ -180,7 +196,7 @@ export default function Pantry({ items, onAdd, onRename, onRemove, onSetQty, onS
 
       <div style={{ padding: '0 20px 10px', fontSize: 12.5, color: 'var(--muted)' }}>
         {inv
-          ? 'Tap an item to cross it out as gone. Counts stay as they are unless you change them with − / +.'
+          ? 'Untick the box beside anything you’re out of. Counts stay as they are unless you change them with − / +.'
           : items.length === 0
             ? 'Add what you keep on hand and the grocery list will stop asking for it.'
             : `${items.length} ${items.length === 1 ? 'item' : 'items'} on hand · skipped when building your grocery list`}
@@ -214,6 +230,42 @@ export default function Pantry({ items, onAdd, onRename, onRemove, onSetQty, onS
 
               {!shut && (
                 <>
+                  {/* The add box leads the shelf: filling the kitchen is what
+                      you come here to do, and on a long shelf the box was a
+                      scroll away. A textarea rather than an input so a dictated
+                      run of items stays visible and correctable instead of
+                      scrolling out of sight. It grows with the text; Enter
+                      still adds, since the separators that matter come from
+                      speech as commas. */}
+                  <div style={{ display: 'flex', gap: 8, margin: '10px 0 2px', alignItems: 'flex-start' }}>
+                    <textarea
+                      className="input"
+                      rows={1}
+                      value={drafts[loc.key] || ''}
+                      onChange={(e) => setDrafts((d) => ({ ...d, [loc.key]: e.target.value }))}
+                      onInput={(e) => { e.target.style.height = 'auto'; e.target.style.height = `${e.target.scrollHeight}px`; }}
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter') {
+                          e.preventDefault();
+                          e.target.style.height = 'auto';
+                          add(loc.key);
+                        }
+                      }}
+                      placeholder="2 cans beans, spaghetti 2 bags"
+                      style={{
+                        flex: 1, minWidth: 0, background: '#faf8f3', borderRadius: 8, padding: '7px 10px',
+                        resize: 'none', overflow: 'hidden', lineHeight: 1.4, fontFamily: 'inherit',
+                      }}
+                    />
+                    <button
+                      className="btn-pill-solid"
+                      style={{ flex: '0 0 auto', borderRadius: 8, padding: '7px 14px', fontSize: 12.5 }}
+                      onClick={() => add(loc.key)}
+                    >
+                      Add
+                    </button>
+                  </div>
+
                   {shelf.map((item) => (
                     <Row
                       key={item.id}
@@ -244,38 +296,6 @@ export default function Pantry({ items, onAdd, onRename, onRemove, onSetQty, onS
                     />
                   ))}
 
-                  {/* A textarea rather than an input so a dictated run of items
-                      stays visible and correctable instead of scrolling out of
-                      sight. It grows with the text; Enter still adds, since the
-                      separators that matter come from speech as commas. */}
-                  <div style={{ display: 'flex', gap: 8, marginTop: 10, alignItems: 'flex-start' }}>
-                    <textarea
-                      className="input"
-                      rows={1}
-                      value={drafts[loc.key] || ''}
-                      onChange={(e) => setDrafts((d) => ({ ...d, [loc.key]: e.target.value }))}
-                      onInput={(e) => { e.target.style.height = 'auto'; e.target.style.height = `${e.target.scrollHeight}px`; }}
-                      onKeyDown={(e) => {
-                        if (e.key === 'Enter') {
-                          e.preventDefault();
-                          e.target.style.height = 'auto';
-                          add(loc.key);
-                        }
-                      }}
-                      placeholder="2 cans beans, spaghetti 2 bags"
-                      style={{
-                        flex: 1, minWidth: 0, background: '#faf8f3', borderRadius: 8, padding: '7px 10px',
-                        resize: 'none', overflow: 'hidden', lineHeight: 1.4, fontFamily: 'inherit',
-                      }}
-                    />
-                    <button
-                      className="btn-pill-solid"
-                      style={{ flex: '0 0 auto', borderRadius: 8, padding: '7px 14px', fontSize: 12.5 }}
-                      onClick={() => add(loc.key)}
-                    >
-                      Add
-                    </button>
-                  </div>
                 </>
               )}
             </div>

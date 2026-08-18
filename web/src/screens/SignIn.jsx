@@ -49,14 +49,17 @@ export default function SignIn({ config, invite, inviteToken, onSignedIn, onErro
 
   return (
     <div className="screen" style={{ alignItems: 'center', justifyContent: 'center', padding: 32, textAlign: 'center' }}>
-      <div
-        style={{
-          width: 72, height: 72, borderRadius: 20, background: 'var(--green)', color: '#fdfcf9',
-          display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 28, fontWeight: 700, marginBottom: 22,
-        }}
-      >
-        RB
-      </div>
+      {/* The app icon itself, not a monogram standing in for it — it's the
+          mark on the home screen, so it should be the one on the way in.
+          BASE_URL because the demo build is served from a subpath. Decorative:
+          the name is spelled out directly underneath. */}
+      <img
+        src={`${import.meta.env.BASE_URL}icon-192.png`}
+        alt=""
+        width={124}
+        height={124}
+        style={{ display: 'block', marginBottom: 6 }}
+      />
       <div style={{ fontSize: 28, fontWeight: 700, letterSpacing: -0.5 }}>Recipe Book</div>
       <div style={{ fontSize: 15, color: 'var(--muted)', marginTop: 10, maxWidth: 250, lineHeight: 1.5 }}>
         Your private recipe book. No feeds, no strangers — just your recipes and your friends&rsquo;.

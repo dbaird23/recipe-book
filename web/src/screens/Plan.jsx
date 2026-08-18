@@ -3,35 +3,29 @@ import { Photo } from '../components.jsx';
 import { DAY_NAMES, MEAL_SLOTS, mondayOf, addDays, isoDate, shortDate, isToday, weekTitle, metaOf } from '../util.js';
 
 const SLOT_ROW = {
-  display: 'flex', gap: 10, alignItems: 'center', padding: '7px 0', borderTop: '1px solid #f4f1ea',
+  display: 'flex', gap: 10, alignItems: 'flex-start', padding: '7px 0', borderTop: '1px solid #f4f1ea',
 };
 
 // Wide enough for BREAKFAST, so all three meals line up in a column
-const SLOT_LABEL = { flex: '0 0 auto', width: 78, fontSize: 10.5, fontWeight: 700, letterSpacing: 0.7, color: 'var(--label)' };
+const SLOT_LABEL = { flex: '0 0 auto', width: 78, fontSize: 10.5, fontWeight: 700, letterSpacing: 0.7, color: 'var(--label)', paddingTop: 4 };
+
+const CLEAR_BTN = {
+  flex: '0 0 auto', border: 'none', background: 'none', color: '#c9c3be', fontSize: 16,
+  lineHeight: 1, cursor: 'pointer', padding: '2px 2px 4px',
+};
 
 /**
- * One meal on one day. Filled with a recipe it opens that recipe; filled with
- * leftovers or a typed plan it reopens the picker, so changing your mind is
- * one tap either way. The × clears just this meal.
+ * One thing on a meal — a recipe, leftovers, or a line you typed. A recipe
+ * opens that recipe; anything else reopens the picker, so changing your mind
+ * is one tap either way. The × takes just this one off.
  */
-function Slot({ label, meal, onPick, onClear, onOpenRecipe }) {
-  const recipe = meal?.recipe || null;
-  const unavailable = meal?.type === 'recipe' && !recipe;
+function Item({ item, label, onEdit, onClear, onOpenRecipe }) {
+  const recipe = item.recipe || null;
+  const unavailable = item.type === 'recipe' && !recipe;
 
   return (
-    <div style={SLOT_ROW}>
-      <div style={SLOT_LABEL}>{label.toUpperCase()}</div>
-
-      {!meal && (
-        <button
-          onClick={onPick}
-          style={{ flex: 1, minWidth: 0, textAlign: 'left', border: 'none', background: 'none', color: '#a08c80', fontSize: 13, fontWeight: 600, cursor: 'pointer', padding: '3px 0' }}
-        >
-          + Add
-        </button>
-      )}
-
-      {recipe && (
+    <div style={{ display: 'flex', gap: 10, alignItems: 'center' }}>
+      {recipe ? (
         <button
           onClick={() => onOpenRecipe(recipe.id)}
           style={{ flex: 1, minWidth: 0, display: 'flex', gap: 9, alignItems: 'center', background: 'none', border: 0, padding: 0, textAlign: 'left', cursor: 'pointer' }}
@@ -46,16 +40,14 @@ function Slot({ label, meal, onPick, onClear, onOpenRecipe }) {
             <div style={{ fontSize: 13.5, fontWeight: 600, lineHeight: 1.25, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
               {recipe.title}
             </div>
-            <div style={{ fontSize: 11.5, color: 'var(--muted)', marginTop: 1 }}>
+            <div style={{ fontSize: 11.5, color: 'var(--muted)', marginTop: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
               {(recipe.mine ? 'Yours' : recipe.ownerName) + ' · ' + metaOf(recipe)}
             </div>
           </div>
         </button>
-      )}
-
-      {meal && !recipe && (
+      ) : (
         <button
-          onClick={onPick}
+          onClick={onEdit}
           style={{ flex: 1, minWidth: 0, textAlign: 'left', background: 'none', border: 0, padding: 0, cursor: 'pointer' }}
         >
           <span
@@ -64,29 +56,53 @@ function Slot({ label, meal, onPick, onClear, onOpenRecipe }) {
               color: unavailable ? 'var(--faint)' : 'var(--chip-fg)', background: '#f1efe7',
             }}
           >
-            {unavailable ? 'Recipe unavailable' : meal.type === 'leftovers' ? 'Leftovers' : meal.text}
+            {unavailable ? 'Recipe unavailable' : item.type === 'leftovers' ? 'Leftovers' : item.text}
           </span>
         </button>
       )}
-
-      {meal && (
-        <button
-          onClick={onClear}
-          aria-label={`Clear ${label.toLowerCase()}`}
-          style={{ flex: '0 0 auto', border: 'none', background: 'none', color: '#c9c3be', fontSize: 16, lineHeight: 1, cursor: 'pointer', padding: '2px 2px 4px' }}
-        >
-          ×
-        </button>
-      )}
+      <button onClick={onClear} aria-label={`Remove from ${label.toLowerCase()}`} style={CLEAR_BTN}>
+        ×
+      </button>
     </div>
   );
 }
 
-function DayCard({ day, entry, onPick, onClearMeal, onClearDay, onOpenRecipe, onSaveNote }) {
+/**
+ * One meal on one day, holding as many things as it takes: spaghetti and
+ * meatballs is the meatball recipe plus a typed "spaghetti", so every meal
+ * that already has something keeps a "+ Add" underneath it.
+ */
+function Slot({ label, items, onPick, onClearItem, onOpenRecipe }) {
+  return (
+    <div style={SLOT_ROW}>
+      <div style={SLOT_LABEL}>{label.toUpperCase()}</div>
+      <div style={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column', gap: 6 }}>
+        {items.map((item, i) => (
+          <Item
+            key={item.id || i}
+            item={item}
+            label={label}
+            onEdit={onPick}
+            onClear={() => onClearItem(i)}
+            onOpenRecipe={onOpenRecipe}
+          />
+        ))}
+        <button
+          onClick={onPick}
+          style={{ textAlign: 'left', border: 'none', background: 'none', color: '#a08c80', fontSize: 13, fontWeight: 600, cursor: 'pointer', padding: '3px 0' }}
+        >
+          + Add
+        </button>
+      </div>
+    </div>
+  );
+}
+
+function DayCard({ day, entry, onPick, onClearItem, onClearDay, onOpenRecipe, onSaveNote }) {
   const [noteDraft, setNoteDraft] = useState(null); // null = not editing
   const note = entry?.note || '';
   const meals = entry?.meals || {};
-  const anyPlanned = MEAL_SLOTS.some((s) => meals[s.key]);
+  const anyPlanned = MEAL_SLOTS.some((s) => meals[s.key]?.length);
 
   return (
     <div className="card" style={{ padding: '12px 14px 10px' }}>
@@ -111,9 +127,9 @@ function DayCard({ day, entry, onPick, onClearMeal, onClearDay, onOpenRecipe, on
         <Slot
           key={slot.key}
           label={slot.label}
-          meal={meals[slot.key]}
+          items={meals[slot.key] || []}
           onPick={() => onPick(slot)}
-          onClear={() => onClearMeal(slot)}
+          onClearItem={(index) => onClearItem(slot, index)}
           onOpenRecipe={onOpenRecipe}
         />
       ))}
@@ -158,7 +174,7 @@ function DayCard({ day, entry, onPick, onClearMeal, onClearDay, onOpenRecipe, on
   );
 }
 
-export default function Plan({ weekOffset, setWeekOffset, entries, onPick, onClearMeal, onClearDay, onOpenRecipe, onSaveNote }) {
+export default function Plan({ weekOffset, setWeekOffset, entries, onPick, onClearItem, onClearDay, onOpenRecipe, onSaveNote }) {
   const monday = mondayOf(weekOffset);
   const days = DAY_NAMES.map((name, i) => ({ name, date: addDays(monday, i) }));
   const byDate = Object.fromEntries(entries.map((e) => [e.date, e]));
@@ -187,7 +203,7 @@ export default function Plan({ weekOffset, setWeekOffset, entries, onPick, onCle
             day={day}
             entry={byDate[isoDate(day.date)]}
             onPick={(slot) => onPick(day, slot)}
-            onClearMeal={(slot) => onClearMeal(isoDate(day.date), slot)}
+            onClearItem={(slot, index) => onClearItem(isoDate(day.date), slot, index)}
             onClearDay={() => onClearDay(isoDate(day.date))}
             onOpenRecipe={onOpenRecipe}
             onSaveNote={(note) => onSaveNote(isoDate(day.date), note)}

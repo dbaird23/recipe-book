@@ -63,7 +63,7 @@ export function AddStep1({ onCancel, onDraft, toast }) {
           </button>
         </div>
         <div style={{ fontSize: 12, color: 'var(--faint)', marginTop: 6, lineHeight: 1.4 }}>
-          Pulls in the photos, ingredients, directions, nutrition, and the original creator.
+          Pulls in the photos, ingredients, directions, notes, nutrition, and the original creator.
         </div>
         <div className="divider-row">
           <div />
@@ -181,8 +181,14 @@ export function AddStep2({ draft: initial, editing, knownTags = [], onBack, onSa
           <textarea className="textarea" rows={6} placeholder="Preheat oven to 400°F…" value={d.dirs} onChange={set('dirs')} />
         </div>
         <div>
-          <div className="section-label" style={{ marginBottom: 6 }}>Notes</div>
-          <textarea className="textarea" rows={2} placeholder="Tweaks, brand swaps, ideas for next time…" value={d.notes} onChange={set('notes')} />
+          <div className="section-label" style={{ marginBottom: 6 }}>Notes · one per line</div>
+          <textarea
+            className="textarea"
+            rows={4}
+            placeholder={'Make ahead: …\nFreezing: …'}
+            value={d.notes}
+            onChange={set('notes')}
+          />
         </div>
         <div>
           <div className="section-label" style={{ marginBottom: 8 }}>Tags</div>

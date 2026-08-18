@@ -12,10 +12,7 @@ const STEP_BTN = {
   borderRadius: 7, fontSize: 14, lineHeight: 1, cursor: 'pointer', padding: 0, display: 'grid', placeItems: 'center',
 };
 
-function Row({ item, inv, qty, editing, editDraft, setEditDraft, onStartEdit, onCommitEdit, onCancelEdit, onSetQty, onRemove }) {
-  const have = qty > 0;
-  const fg = !inv || have ? 'var(--ink)' : 'var(--faint)';
-
+function Row({ item, inv, qty, out, editing, editDraft, setEditDraft, onStartEdit, onCommitEdit, onCancelEdit, onSetQty, onToggleOut, onRemove }) {
   if (editing) {
     return (
       <div style={ROW}>
@@ -45,82 +42,104 @@ function Row({ item, inv, qty, editing, editDraft, setEditDraft, onStartEdit, on
   }
 
   return (
-    <div
-      style={{ ...ROW, cursor: inv ? 'pointer' : 'default' }}
-      onClick={inv ? () => onSetQty(have ? 0 : Math.max(1, qty)) : undefined}
-    >
-      {inv && <Check on={have} />}
+    <div style={{ ...ROW, cursor: inv ? 'pointer' : 'default' }} onClick={inv ? onToggleOut : undefined}>
+      {inv && <Check on={!out} />}
       <div
         onClick={inv ? undefined : onStartEdit}
         style={{
-          flex: 1, minWidth: 0, fontSize: 13.5, color: fg,
-          textDecoration: inv && !have ? 'line-through' : 'none',
+          flex: 1, minWidth: 0, fontSize: 13.5, color: out ? 'var(--faint)' : 'var(--ink)',
+          textDecoration: out ? 'line-through' : 'none',
           cursor: inv ? 'pointer' : 'text',
         }}
       >
         {item.name}
       </div>
 
-      {inv ? (
-        <div style={{ flex: '0 0 auto', display: 'flex', alignItems: 'center', gap: 8 }}>
-          <button style={STEP_BTN} onClick={(e) => { e.stopPropagation(); onSetQty(Math.max(0, qty - 1)); }} aria-label={`Less ${item.name}`}>
-            −
-          </button>
-          <div style={{ minWidth: 62, textAlign: 'center', fontSize: 12.5, fontWeight: 600, color: have ? 'var(--muted)' : 'var(--faint)' }}>
-            {qtyLabel(qty, item.unit)}
-          </div>
-          <button style={STEP_BTN} onClick={(e) => { e.stopPropagation(); onSetQty(qty + 1); }} aria-label={`More ${item.name}`}>
-            +
-          </button>
+      {/* The steppers are here whether or not you're taking inventory: using
+          one jar of something is far more common than a walk down the shelves.
+          Day to day they stop at one — an item you're out of goes with ×. */}
+      <div style={{ flex: '0 0 auto', display: 'flex', alignItems: 'center', gap: 8 }}>
+        <button
+          style={{ ...STEP_BTN, opacity: !inv && qty <= 1 ? 0.4 : 1 }}
+          disabled={!inv && qty <= 1}
+          onClick={(e) => { e.stopPropagation(); onSetQty(Math.max(inv ? 0 : 1, qty - 1)); }}
+          aria-label={`Less ${item.name}`}
+        >
+          −
+        </button>
+        <div style={{ minWidth: 62, textAlign: 'center', fontSize: 12.5, fontWeight: 600, color: out || qty === 0 ? 'var(--faint)' : 'var(--muted)' }}>
+          {qtyLabel(qty, item.unit)}
         </div>
-      ) : (
-        <>
-          <div style={{ flex: '0 0 auto', fontSize: 12.5, color: 'var(--muted)' }}>{qtyLabel(item.qty, item.unit)}</div>
-          <button
-            onClick={onRemove}
-            aria-label={`Remove ${item.name}`}
-            style={{ flex: '0 0 auto', border: 'none', background: 'none', color: '#c9c3be', fontSize: 16, lineHeight: 1, cursor: 'pointer', padding: '2px 2px 4px' }}
-          >
-            ×
-          </button>
-        </>
+        <button style={STEP_BTN} onClick={(e) => { e.stopPropagation(); onSetQty(qty + 1); }} aria-label={`More ${item.name}`}>
+          +
+        </button>
+      </div>
+
+      {!inv && (
+        <button
+          onClick={onRemove}
+          aria-label={`Remove ${item.name}`}
+          style={{ flex: '0 0 auto', border: 'none', background: 'none', color: '#c9c3be', fontSize: 16, lineHeight: 1, cursor: 'pointer', padding: '2px 2px 4px' }}
+        >
+          ×
+        </button>
       )}
     </div>
   );
 }
 
 /**
- * What's already in the kitchen, in three cards: pantry, fridge, freezer.
+ * What's already in the kitchen, in three cards: pantry, fridge, freezer. Any
+ * of them folds away — most kitchens have one shelf that's twice the size of
+ * the other two.
  *
- * Two modes. Day to day you add, rename and remove single items. "Take
- * inventory" is the walk down the shelves: every item gets a count you can
- * step up or down, and anything you zero out is gone when you save — which is
- * far less tapping than removing a dozen things one at a time. You can add
- * during that walk too, since half of taking stock is finding things you never
- * wrote down.
+ * Two modes. Day to day you add, rename, count up and down, and remove single
+ * items. "Take inventory" is the walk down the shelves: tap an item to cross it
+ * out as gone — the count stays put, so a mis-tap costs nothing — and anything
+ * still crossed out when you save is removed. You can add during that walk too,
+ * since half of taking stock is finding things you never wrote down.
  */
-export default function Pantry({ items, onAdd, onRename, onRemove, onSaveInventory }) {
+export default function Pantry({ items, onAdd, onRename, onRemove, onSetQty, onSaveInventory }) {
   const [drafts, setDrafts] = useState({});
   const [editId, setEditId] = useState(null);
   const [editDraft, setEditDraft] = useState('');
-  const [inv, setInv] = useState(null); // { [id]: qty } while taking inventory, else null
+  const [inv, setInv] = useState(null); // { qty: {id: n}, out: {id: true} } while taking inventory
+  const [collapsed, setCollapsed] = useState(() => {
+    try {
+      return JSON.parse(localStorage.getItem('rb-pantry-collapsed') || '{}');
+    } catch {
+      return {};
+    }
+  });
 
   // An item added mid-inventory has no entry yet, so its own count stands in
-  const qtyOf = (it) => (inv && inv[it.id] !== undefined ? inv[it.id] : it.qty);
-  const kept = inv ? items.filter((it) => qtyOf(it) > 0).length : 0;
+  const qtyOf = (it) => (inv && inv.qty[it.id] !== undefined ? inv.qty[it.id] : it.qty);
+  const isOut = (it) => !!inv?.out[it.id];
+  const kept = inv ? items.filter((it) => !isOut(it)).length : 0;
   const allKept = kept === items.length;
+
+  function toggleCollapsed(key) {
+    setCollapsed((prev) => {
+      const next = { ...prev, [key]: !prev[key] };
+      localStorage.setItem('rb-pantry-collapsed', JSON.stringify(next));
+      return next;
+    });
+  }
 
   function startInventory() {
     setEditId(null);
-    setInv(Object.fromEntries(items.map((it) => [it.id, it.qty])));
+    setInv({ qty: Object.fromEntries(items.map((it) => [it.id, it.qty])), out: {} });
   }
 
   function toggleAll() {
-    setInv(Object.fromEntries(items.map((it) => [it.id, allKept ? 0 : qtyOf(it) || it.qty || 1])));
+    setInv((prev) => ({ ...prev, out: allKept ? Object.fromEntries(items.map((it) => [it.id, true])) : {} }));
   }
 
   function saveInventory() {
-    const changed = items.filter((it) => qtyOf(it) !== it.qty).map((it) => ({ id: it.id, qty: qtyOf(it) }));
+    // A crossed-out item is sent as a zero, which is how the API hears "gone"
+    const changed = items
+      .filter((it) => isOut(it) || qtyOf(it) !== it.qty)
+      .map((it) => ({ id: it.id, qty: isOut(it) ? 0 : qtyOf(it) }));
     setInv(null);
     onSaveInventory(changed);
   }
@@ -132,7 +151,7 @@ export default function Pantry({ items, onAdd, onRename, onRemove, onSaveInvento
     const added = await onAdd(location, text);
     // Count what just arrived as present, so saving doesn't read it as a zero
     if (inv && added?.length) {
-      setInv((prev) => ({ ...prev, ...Object.fromEntries(added.map((it) => [it.id, it.qty])) }));
+      setInv((prev) => ({ ...prev, qty: { ...prev.qty, ...Object.fromEntries(added.map((it) => [it.id, it.qty])) } }));
     }
   }
 
@@ -161,7 +180,7 @@ export default function Pantry({ items, onAdd, onRename, onRemove, onSaveInvento
 
       <div style={{ padding: '0 20px 10px', fontSize: 12.5, color: 'var(--muted)' }}>
         {inv
-          ? 'Adjust counts with − / +. Zero means you’re out. Add anything you find.'
+          ? 'Tap an item to cross it out as gone. Counts stay as they are unless you change them with − / +.'
           : items.length === 0
             ? 'Add what you keep on hand and the grocery list will stop asking for it.'
             : `${items.length} ${items.length === 1 ? 'item' : 'items'} on hand · skipped when building your grocery list`}
@@ -173,64 +192,92 @@ export default function Pantry({ items, onAdd, onRename, onRemove, onSaveInvento
       >
         {PANTRY_LOCATIONS.map((loc) => {
           const shelf = items.filter((it) => it.location === loc.key);
+          const shut = !!collapsed[loc.key];
           return (
-            <div key={loc.key} className="card" style={{ padding: '12px 14px 10px' }}>
-              <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between' }}>
-                <div className="section-label" style={{ fontSize: 11.5, letterSpacing: 0.8 }}>{loc.label}</div>
+            <div key={loc.key} className="card" style={{ padding: shut ? '12px 14px' : '12px 14px 10px' }}>
+              <button
+                onClick={() => toggleCollapsed(loc.key)}
+                aria-expanded={!shut}
+                style={{
+                  display: 'flex', alignItems: 'center', justifyContent: 'space-between', width: '100%',
+                  border: 'none', background: 'none', padding: 0, cursor: 'pointer', textAlign: 'left',
+                }}
+              >
+                <div style={{ display: 'flex', alignItems: 'center', gap: 7 }}>
+                  <span style={{ color: 'var(--faint)', fontSize: 11, lineHeight: 1 }}>{shut ? '▸' : '▾'}</span>
+                  <span className="section-label" style={{ fontSize: 11.5, letterSpacing: 0.8 }}>{loc.label}</span>
+                </div>
                 <div style={{ fontSize: 12, color: 'var(--faint)' }}>
                   {shelf.length} {shelf.length === 1 ? 'item' : 'items'}
                 </div>
-              </div>
+              </button>
 
-              {shelf.map((item) => (
-                <Row
-                  key={item.id}
-                  item={item}
-                  inv={!!inv}
-                  qty={inv ? inv[item.id] ?? item.qty : item.qty}
-                  editing={editId === item.id}
-                  editDraft={editDraft}
-                  setEditDraft={setEditDraft}
-                  onStartEdit={() => { setEditId(item.id); setEditDraft(pantryLine(item)); }}
-                  onCommitEdit={() => commitEdit(item)}
-                  onCancelEdit={() => setEditId(null)}
-                  onSetQty={(qty) => setInv((prev) => ({ ...prev, [item.id]: qty }))}
-                  onRemove={() => onRemove(item)}
-                />
-              ))}
+              {!shut && (
+                <>
+                  {shelf.map((item) => (
+                    <Row
+                      key={item.id}
+                      item={item}
+                      inv={!!inv}
+                      qty={qtyOf(item)}
+                      out={isOut(item)}
+                      editing={editId === item.id}
+                      editDraft={editDraft}
+                      setEditDraft={setEditDraft}
+                      onStartEdit={() => { setEditId(item.id); setEditDraft(pantryLine(item)); }}
+                      onCommitEdit={() => commitEdit(item)}
+                      onCancelEdit={() => setEditId(null)}
+                      onSetQty={(qty) =>
+                        inv
+                          ? setInv((prev) => ({ ...prev, qty: { ...prev.qty, [item.id]: qty } }))
+                          : onSetQty(item, qty)
+                      }
+                      onToggleOut={() =>
+                        setInv((prev) => {
+                          const out = { ...prev.out };
+                          if (out[item.id]) delete out[item.id];
+                          else out[item.id] = true;
+                          return { ...prev, out };
+                        })
+                      }
+                      onRemove={() => onRemove(item)}
+                    />
+                  ))}
 
-              {/* A textarea rather than an input so a dictated run of items
-                  stays visible and correctable instead of scrolling out of
-                  sight. It grows with the text; Enter still adds, since the
-                  separators that matter come from speech as commas. */}
-              <div style={{ display: 'flex', gap: 8, marginTop: 10, alignItems: 'flex-start' }}>
-                <textarea
-                  className="input"
-                  rows={1}
-                  value={drafts[loc.key] || ''}
-                  onChange={(e) => setDrafts((d) => ({ ...d, [loc.key]: e.target.value }))}
-                  onInput={(e) => { e.target.style.height = 'auto'; e.target.style.height = `${e.target.scrollHeight}px`; }}
-                  onKeyDown={(e) => {
-                    if (e.key === 'Enter') {
-                      e.preventDefault();
-                      e.target.style.height = 'auto';
-                      add(loc.key);
-                    }
-                  }}
-                  placeholder="2 cans black beans, rice, 3 onions"
-                  style={{
-                    flex: 1, minWidth: 0, background: '#faf8f3', borderRadius: 8, padding: '7px 10px',
-                    resize: 'none', overflow: 'hidden', lineHeight: 1.4, fontFamily: 'inherit',
-                  }}
-                />
-                <button
-                  className="btn-pill-solid"
-                  style={{ flex: '0 0 auto', borderRadius: 8, padding: '7px 14px', fontSize: 12.5 }}
-                  onClick={() => add(loc.key)}
-                >
-                  Add
-                </button>
-              </div>
+                  {/* A textarea rather than an input so a dictated run of items
+                      stays visible and correctable instead of scrolling out of
+                      sight. It grows with the text; Enter still adds, since the
+                      separators that matter come from speech as commas. */}
+                  <div style={{ display: 'flex', gap: 8, marginTop: 10, alignItems: 'flex-start' }}>
+                    <textarea
+                      className="input"
+                      rows={1}
+                      value={drafts[loc.key] || ''}
+                      onChange={(e) => setDrafts((d) => ({ ...d, [loc.key]: e.target.value }))}
+                      onInput={(e) => { e.target.style.height = 'auto'; e.target.style.height = `${e.target.scrollHeight}px`; }}
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter') {
+                          e.preventDefault();
+                          e.target.style.height = 'auto';
+                          add(loc.key);
+                        }
+                      }}
+                      placeholder="2 cans beans, spaghetti 2 bags"
+                      style={{
+                        flex: 1, minWidth: 0, background: '#faf8f3', borderRadius: 8, padding: '7px 10px',
+                        resize: 'none', overflow: 'hidden', lineHeight: 1.4, fontFamily: 'inherit',
+                      }}
+                    />
+                    <button
+                      className="btn-pill-solid"
+                      style={{ flex: '0 0 auto', borderRadius: 8, padding: '7px 14px', fontSize: 12.5 }}
+                      onClick={() => add(loc.key)}
+                    >
+                      Add
+                    </button>
+                  </div>
+                </>
+              )}
             </div>
           );
         })}

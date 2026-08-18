@@ -14,23 +14,29 @@ that runs entirely in your browser with sample data (single-player; changes stay
 ## Features
 
 - **My Recipes** — list or grid view, search, meal/tag filters, newest/A–Z sort
-- **Add recipes three ways** — import from a URL (reads the site's schema.org recipe data, including
-  photos, times, nutrition, and creator credit), paste the text and let it parse, or start from scratch
-- **Recipe pages** — photo gallery, tap-to-check ingredients, numbered directions, personal notes,
-  per-serving nutrition (auto-estimated, adjustable), comments with photos, and a **1×–4× servings
-  multiplier** that rescales ingredient quantities in place
+- **Add recipes three ways** — import from a URL (reads the site's schema.org recipe data for times,
+  nutrition and creator credit, and the page itself for the cook's notes and the step photos through
+  the post), paste the text and let it parse, or start from scratch
+- **Recipe pages** — photo gallery, tap-to-check ingredients, numbered directions, numbered notes,
+  nutrition per serving — saying what a serving actually is ("5 meatballs with sauce") when the recipe
+  does — comments with photos, and a **1×–4× servings multiplier** that rescales ingredient quantities
+  in place
 - **Pantry** — what you already keep in the pantry, fridge and freezer, typed *or dictated* the way
   you'd say it: "two cans of black beans, a bag of rice and three onions" lands as three items, spoken
-  numbers and all. The grocery list leaves those ingredients out and shows you what it skipped.
-  **Take inventory** walks the shelves in one pass — step each count up or down, add whatever you find
-  along the way, and anything you zero out drops off when you save
-- **Plan** — a week at a time, with breakfast, lunch and dinner on every day. Each meal takes a
-  recipe (yours or a friend's), "leftovers", or anything you type ("Takeout", "Date night"), plus a
-  note for the day; clear one meal or the whole day in a tap
+  numbers and all, and the count can come after the thing too ("spaghetti 2 bags"). Counts step up and
+  down right on the shelf, and each shelf folds away. The grocery list leaves those ingredients out and
+  shows you what it skipped. **Take inventory** walks the shelves in one pass — cross out what's gone
+  (the count stays put, so a mis-tap costs nothing), add whatever you find, and everything still crossed
+  out drops off when you save
+- **Plan** — a week at a time, with breakfast, lunch and dinner on every day. A meal holds as many
+  things as it takes — spaghetti and meatballs is the meatball recipe plus a typed "spaghetti" — each
+  one a recipe (yours or a friend's), "leftovers", or anything you type ("Takeout", "Date night"), plus
+  a note for the day; clear one dish or the whole day in a tap
 - **Groceries** — its own tab, built from the week's plan and laid out by aisle (produce, dairy,
   freezer…) rather than by day, so it's one walk through the shop. An ingredient several meals need
   is a single line that says how many recipes want it — tap to see which, or to open one. Add
-  anything by hand, and tick things off as you go
+  anything by hand, tick things off as you go — a ticked line leaves the list and waits in "the
+  trolley" at the bottom — and swipe any line left to drop it from this week's shop
 - **Friends** — each member has their own book; browse a friend's recipes, search across all friends,
   save any recipe into your own book (a clean copy — no tags or comments carried over, credited to
   them, and independent of their later edits)
@@ -88,7 +94,7 @@ the key in an `Authorization: Bearer` header.
 | `update_recipe` | Change a recipe you own; send only the fields you want changed |
 | `import_recipe_from_url` | Parse a recipe off a web page, optionally saving it straight away |
 | `get_meal_plan` | What's planned to eat across a date range — breakfast, lunch and dinner |
-| `set_meal_plan_day` | Set or clear any of one day's meals, and its note |
+| `set_meal_plan_day` | Set or clear any of one day's meals — one thing or several — and its note |
 | `get_pantry` | What's already in the kitchen — pantry, fridge and freezer |
 | `add_pantry_item` | Put something in the kitchen, from a typed line or explicit fields |
 | `update_pantry_item` | Change an item's name, count, unit or shelf |
@@ -198,7 +204,21 @@ work from inside `worker/`. The npm scripts above run from anywhere in the repo.
 - **List/grid view** is a per-device preference in the profile sheet (it was a canvas knob in the
   prototype).
 - Recipes can be **deleted** from the edit screen (not in the prototype, but necessary in a real app).
+- **Servings** are worked out from what the recipe says it yields. A yield is often a count of things
+  rather than of meals — "about 35 meatballs" is not 35 dinners — so when the nutrition says what one
+  serving is in the same units ("5 meatballs with sauce"), the two are divided into each other and
+  that recipe correctly serves seven. With nothing to divide by, the count stands, which is the right
+  answer for the "12 cookies" kind of yield anyway. Pasted recipes read the same way.
 - **URL import** depends on the site publishing schema.org recipe data, and some sites block
   server-side fetches outright. When that happens the app says so and points at "paste the text".
+  Notes and the step photos aren't in that data at all, so they're read out of the page's markup:
+  the wrappers the common recipe-card plugins use for notes, and the images inside the article,
+  minus the logos, headshots and Pinterest graphics. A site that lays either out in a way the
+  importer doesn't recognise simply comes back without them — everything is editable on the review
+  screen either way.
+- **Ticks and hand-struck lines on the grocery list** live in the browser, filed under the week they
+  belong to, so a shop doesn't need a round trip in an aisle and last week's list can't hide this
+  week's flour. Striking a planned ingredient off only hides it for that week — the recipe still
+  calls for it.
 - **AI & API access** isn't in the prototype at all — it exists so an assistant can plan meals and
   build a shopping list against the real book instead of guessing.

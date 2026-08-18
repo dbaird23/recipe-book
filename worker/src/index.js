@@ -11,7 +11,7 @@ import { importFromUrl } from './importer.js';
 import { bearerToken, userForToken, touchApiKey, listApiKeys, createApiKey, revokeApiKey } from './apikeys.js';
 import { handleMcp } from './mcp.js';
 import {
-  HttpError, uid, nowIso, pairKey, json, autoNut, sanitizeRecipeInput, putImage, photoUrl,
+  HttpError, uid, nowIso, pairKey, json, autoNut, cleanNut, sanitizeRecipeInput, putImage, photoUrl,
   PANTRY_LOCATIONS, parsePantryEntry, GROCERY_SECTIONS, grocerySection, MEALS,
 } from './util.js';
 
@@ -274,8 +274,7 @@ patch('/api/recipes/:id', async (ctx) => {
 
   if (body.nut && Object.keys(body).length <= 2) {
     // Nutrition-only adjustment (with optional nutEdited flag)
-    const n = body.nut;
-    const nut = { cal: +n.cal || 0, pro: +n.pro || 0, carb: +n.carb || 0, fat: +n.fat || 0 };
+    const nut = cleanNut(body.nut);
     await ctx.db
       .prepare('UPDATE recipes SET nut=?, nut_edited=?, updated_at=? WHERE id=?')
       .bind(JSON.stringify(nut), body.nutEdited === false ? 0 : 1, now, row.id)
@@ -478,14 +477,18 @@ async function planRecipe(ctx, recipeId, myId, friendIds) {
   };
 }
 
-/** A day as the app and the MCP tools read it: three meals and a note. */
-const emptyDay = (date) => ({ date, note: '', meals: { breakfast: null, lunch: null, dinner: null } });
+/**
+ * A day as the app and the MCP tools read it: three meals and a note. Each
+ * meal is a list, because dinner is often two things — the meatball recipe and
+ * the spaghetti you don't have a recipe for.
+ */
+const emptyDay = (date) => ({ date, note: '', meals: { breakfast: [], lunch: [], dinner: [] } });
 
 /** Days in a range that have anything on them at all, oldest first. */
 async function readPlan(ctx, me, start, end, friendIds) {
   const [rows, notes] = await Promise.all([
     ctx.db
-      .prepare('SELECT * FROM plan_entries WHERE user_id=? AND date>=? AND date<=? ORDER BY date')
+      .prepare('SELECT * FROM plan_entries WHERE user_id=? AND date>=? AND date<=? ORDER BY date, position, rowid')
       .bind(me.id, start, end)
       .all(),
     ctx.db
@@ -499,21 +502,27 @@ async function readPlan(ctx, me, start, end, friendIds) {
     if (!byDate.has(date)) byDate.set(date, emptyDay(date));
     return byDate.get(date);
   };
-  await Promise.all(
-    rows.results.map(async (r) => {
-      dayOf(r.date).meals[r.meal] = {
+  const items = await Promise.all(
+    rows.results.map(async (r) => ({
+      row: r,
+      item: {
+        id: r.id,
         type: r.type,
         text: r.text,
         recipe: r.type === 'recipe' ? await planRecipe(ctx, r.recipe_id, me.id, friendIds) : null,
-      };
-    })
+      },
+    }))
   );
+  for (const { row, item } of items) {
+    const meal = dayOf(row.date).meals[row.meal];
+    if (meal) meal.push(item);
+  }
   for (const n of notes.results) dayOf(n.date).note = n.note || '';
   return [...byDate.values()].sort((a, b) => a.date.localeCompare(b.date));
 }
 
-/** Read one meal off a write body into the columns it's stored in. */
-async function planMeal(ctx, d, myId, friendIds) {
+/** Read one planned thing off a write body into the columns it's stored in. */
+async function planItem(ctx, d, myId, friendIds) {
   if (d && d.type === 'recipe') {
     const r = await planRecipe(ctx, d.recipeId, myId, friendIds);
     if (!r) throw new HttpError(404, 'That recipe is not in your book');
@@ -537,8 +546,11 @@ get('/api/plan', async (ctx) => {
   return json({ entries: await readPlan(ctx, me, start, end, friendIds) });
 }, KEY);
 
-// Upsert one day. Send `breakfast`, `lunch` or `dinner` to set or clear that
-// meal, `note` to set or clear the note; omit any of them to leave as is.
+// Upsert one day. Send `breakfast`, `lunch` or `dinner` to say what that meal
+// is — one entry, a list of them, or null to clear it — and `note` to set or
+// clear the note; omit any of them to leave as is. A meal that is sent is
+// replaced wholesale, so removing one of its two dishes means sending the one
+// that stays.
 put('/api/plan/:date', async (ctx) => {
   const me = requireUser(ctx);
   const date = requireDate(ctx.params.date);
@@ -548,22 +560,22 @@ put('/api/plan/:date', async (ctx) => {
 
   for (const meal of MEALS) {
     if (!(meal in body)) continue;
-    if (body[meal] === null) {
-      await ctx.db
-        .prepare('DELETE FROM plan_entries WHERE user_id=? AND date=? AND meal=?')
-        .bind(me.id, date, meal)
-        .run();
-      continue;
-    }
-    const m = await planMeal(ctx, body[meal], me.id, friendIds);
-    await ctx.db
-      .prepare(
-        `INSERT INTO plan_entries (user_id,date,meal,type,recipe_id,text,updated_at) VALUES (?,?,?,?,?,?,?)
-         ON CONFLICT(user_id,date,meal) DO UPDATE SET type=excluded.type, recipe_id=excluded.recipe_id,
-           text=excluded.text, updated_at=excluded.updated_at`
-      )
-      .bind(me.id, date, meal, m.type, m.recipe_id, m.text, now)
-      .run();
+    const wanted = body[meal] === null ? [] : [].concat(body[meal]);
+    // Everything is read and checked before anything is deleted, so a bad
+    // entry leaves the meal as it was rather than half-cleared
+    const items = [];
+    for (const d of wanted.slice(0, 10)) items.push(await planItem(ctx, d, me.id, friendIds));
+    // Clearing and refilling in one batch, so the meal is never briefly empty
+    await ctx.db.batch([
+      ctx.db.prepare('DELETE FROM plan_entries WHERE user_id=? AND date=? AND meal=?').bind(me.id, date, meal),
+      ...items.map((m, i) =>
+        ctx.db
+          .prepare(
+            'INSERT INTO plan_entries (id,user_id,date,meal,position,type,recipe_id,text,updated_at) VALUES (?,?,?,?,?,?,?,?,?)'
+          )
+          .bind(uid(), me.id, date, meal, i, m.type, m.recipe_id, m.text, now)
+      ),
+    ]);
   }
 
   if ('note' in body) {

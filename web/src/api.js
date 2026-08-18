@@ -79,6 +79,7 @@ const realApi = {
   pantry: () => request('/api/pantry'),
   addPantryItem: (location, text) => request('/api/pantry', { method: 'POST', body: { location, text } }),
   renamePantryItem: (id, text) => request(`/api/pantry/${id}`, { method: 'PATCH', body: { text } }),
+  setPantryQty: (id, qty) => request(`/api/pantry/${id}`, { method: 'PATCH', body: { qty } }),
   removePantryItem: (id) => request(`/api/pantry/${id}`, { method: 'DELETE' }),
   savePantryInventory: (items) => request('/api/pantry', { method: 'PUT', body: { items } }),
 

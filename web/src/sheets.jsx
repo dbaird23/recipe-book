@@ -291,7 +291,7 @@ export function FilterSheet({ filters, setFilters, customTags = [], resultCount,
   );
 }
 
-export function PlanPickerSheet({ dayName, mealLabel, recipes, onPickRecipe, onPickLeftovers, onPickText, onClose, toast }) {
+export function PlanPickerSheet({ dayName, mealLabel, already = 0, recipes, onPickRecipe, onPickLeftovers, onPickText, onClose, toast }) {
   const [q, setQ] = useState('');
   const [free, setFree] = useState('');
   const query = q.trim().toLowerCase();
@@ -301,7 +301,14 @@ export function PlanPickerSheet({ dayName, mealLabel, recipes, onPickRecipe, onP
 
   return (
     <Sheet onClose={onClose}>
-      <div className="sheet-title">Plan {dayName} {mealLabel.toLowerCase()}</div>
+      <div className="sheet-title">
+        {already ? 'Add to' : 'Plan'} {dayName} {mealLabel.toLowerCase()}
+      </div>
+      {already > 0 && (
+        <div className="sheet-sub">
+          {already === 1 ? 'One thing is' : `${already} things are`} already on this meal — whatever you pick joins it.
+        </div>
+      )}
       <div style={{ display: 'flex', gap: 8, marginTop: 12 }}>
         <ChipToggle label="Leftovers" on={false} onToggle={onPickLeftovers} />
         <button

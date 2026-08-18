@@ -69,10 +69,10 @@ const detail = (r) => ({
   comments: r.comments.map((c) => ({ from: c.author.name, text: c.text })),
 });
 
-const mealOf = (m) => {
+const itemOf = (m) => {
   if (!m) return undefined;
   if (m.type === 'recipe') {
-    // The plan keeps the slot but drops the link when a recipe is deleted or
+    // The plan keeps the entry but drops the link when a recipe is deleted or
     // its owner is unfriended — say so rather than reporting an empty meal.
     if (!m.recipe) return { type: 'recipe', unavailable: 'That recipe is no longer in your book' };
     return { type: 'recipe', recipeId: m.recipe.id, title: m.recipe.title, owner: m.recipe.ownerName, servings: m.recipe.servings };
@@ -82,7 +82,14 @@ const mealOf = (m) => {
   return undefined;
 };
 
-// Meals with nothing planned are left out rather than reported as null
+// A meal is a list: often one thing, sometimes a recipe plus the side that
+// doesn't have one ("spaghetti"). Meals with nothing planned are left out
+// rather than reported as empty.
+const mealOf = (list) => {
+  const items = (list || []).map(itemOf).filter(Boolean);
+  return items.length ? items : undefined;
+};
+
 const planDay = (e) => ({
   date: e.date,
   ...Object.fromEntries(MEALS.map((meal) => [meal, mealOf(e.meals[meal])]).filter(([, v]) => v)),
@@ -96,6 +103,17 @@ const pantryItem = (i) => ({
   quantity: i.qty,
   unit: i.unit || undefined,
 });
+
+/** One thing on a meal: a recipe, leftovers, or a line you just typed. */
+const PLAN_ENTRY = {
+  type: 'object',
+  properties: {
+    type: { type: 'string', enum: ['recipe', 'leftovers', 'text'] },
+    recipeId: { type: 'string', description: 'Required when type is "recipe"' },
+    text: { type: 'string', description: 'Required when type is "text" — e.g. "Takeout", "garlic bread"' },
+  },
+  required: ['type'],
+};
 
 const LOCATION = { type: 'string', enum: PANTRY_LOCATIONS, description: 'Where it lives in the kitchen' };
 
@@ -239,7 +257,7 @@ const TOOLS = [
     name: 'get_meal_plan',
     title: 'Read the meal plan',
     description:
-      'What is planned to eat across a date range — breakfast, lunch and dinner, one entry per planned day. Meals with nothing planned are left out, and days with nothing at all are simply absent.',
+      'What is planned to eat across a date range — breakfast, lunch and dinner, one entry per planned day. Each meal is a list, since a meal can be several things (a recipe plus a side). Meals with nothing planned are left out, and days with nothing at all are simply absent.',
     inputSchema: {
       type: 'object',
       properties: {
@@ -258,7 +276,7 @@ const TOOLS = [
     name: 'set_meal_plan_day',
     title: 'Plan a day',
     description:
-      'Set or clear any of breakfast, lunch and dinner on one day, and/or its note. Omit a meal to leave it alone; pass null to clear it. Recipes must already be in your book or a friend’s.',
+      'Set or clear any of breakfast, lunch and dinner on one day, and/or its note. A meal can be several things at once — pass a list, e.g. a meatball recipe plus "spaghetti" as text. Whatever you send replaces that meal entirely; omit a meal to leave it alone, or pass null to clear it. Recipes must already be in your book or a friend’s.',
     inputSchema: {
       type: 'object',
       properties: {
@@ -267,20 +285,18 @@ const TOOLS = [
           MEALS.map((meal) => [
             meal,
             {
-              type: ['object', 'null'],
-              description: `What is for ${meal}, or null to clear it`,
-              properties: {
-                type: { type: 'string', enum: ['recipe', 'leftovers', 'text'] },
-                recipeId: { type: 'string', description: 'Required when type is "recipe"' },
-                text: { type: 'string', description: 'Required when type is "text" — e.g. "Takeout"' },
-              },
-              required: ['type'],
+              type: ['array', 'object', 'null'],
+              description: `What is for ${meal} — one entry or a list of them, or null to clear it`,
+              items: { $ref: '#/$defs/planEntry' },
+              properties: PLAN_ENTRY.properties,
+              required: PLAN_ENTRY.required,
             },
           ])
         ),
         note: { type: 'string', description: 'A note for the day; pass an empty string to clear it' },
       },
       required: ['date'],
+      $defs: { planEntry: PLAN_ENTRY },
     },
     run: async (call, args) => {
       const body = {};
@@ -429,7 +445,9 @@ const TOOLS = [
         call('GET', '/api/groceries'),
       ]);
       const skipped = new Map();
-      const planned = entries.flatMap((e) => MEALS.map((meal) => ({ date: e.date, meal, m: e.meals[meal] })).filter((x) => x.m));
+      const planned = entries.flatMap((e) =>
+        MEALS.flatMap((meal) => (e.meals[meal] || []).map((m) => ({ date: e.date, meal, m })))
+      );
       const fromRecipes = planned
         .filter((x) => x.m.recipe)
         .map(({ date, meal, m }) => {
@@ -446,7 +464,7 @@ const TOOLS = [
       // but still belong in the answer — they're meals you don't shop for.
       const noIngredients = planned
         .filter((x) => !x.m.recipe)
-        .map(({ date, meal, m }) => ({ date, meal, planned: mealOf(m) }));
+        .map(({ date, meal, m }) => ({ date, meal, planned: itemOf(m) }));
       return {
         start: args.start,
         end: args.end,
@@ -490,7 +508,8 @@ async function handleMessage(message, call) {
         instructions:
           'Recipe Book is a small, invite-only recipe collection shared between family and friends. ' +
           'Recipes belong to people: you can read and plan with anyone’s, but only edit your own. ' +
-          'Dates are always YYYY-MM-DD in the planner, and each day has a breakfast, a lunch and a dinner. ' +
+          'Dates are always YYYY-MM-DD in the planner, and each day has a breakfast, a lunch and a dinner, ' +
+          'each of which can hold more than one thing. ' +
           'The pantry is what the member already has in the kitchen; the grocery list leaves those ingredients out, ' +
           'and anything added to the list by hand sits alongside the plan’s ingredients.',
       });

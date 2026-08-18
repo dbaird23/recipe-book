@@ -1,7 +1,7 @@
 // In-browser API for the static demo build (GitHub Pages). Same interface as
 // the real api client, backed by localStorage — single-player, no server.
 import { DEMO_MY_RECIPES, DEMO_FRIENDS, DEMO_PANTRY } from './demoData.js';
-import { autoNut, parsePantryEntry, grocerySection, GROCERY_SECTIONS, MEAL_SLOTS } from './util.js';
+import { autoNut, cleanNut, parsePantryEntry, grocerySection, GROCERY_SECTIONS, MEAL_SLOTS } from './util.js';
 
 const KEY = 'recipe-book-demo-v1';
 const uid = () => (crypto.randomUUID ? crypto.randomUUID() : String(Math.random()).slice(2));
@@ -30,7 +30,7 @@ function mkRecipe(src, ownerId, ownerName, authorsByName) {
     notes: src.notes || '',
     source: src.source || null,
     from: src.from || null,
-    nut: src.nut || autoNut((src.ing || []).length),
+    nut: src.nut ? cleanNut(src.nut) : autoNut((src.ing || []).length),
     // Nutrition supplied by an import or paste is real data, not an estimate
     nutEdited: !!src.nut,
     rating: src.rating || 0,
@@ -75,21 +75,22 @@ try {
   /* corrupted storage — reseed on sign-in */
 }
 
-// Demo state saved before breakfast and lunch existed kept one dinner per day
+// Demo state predates breakfast and lunch (one dinner per day), and then
+// predates a meal being able to hold more than one thing. Both are brought
+// forward to the shape the app reads now: every meal is a list.
 if (Array.isArray(state?.plan)) {
-  state.plan = state.plan.map((e) =>
-    e.meals
-      ? e
+  const asList = (m) => (m == null ? [] : Array.isArray(m) ? m : [m]);
+  state.plan = state.plan.map((e) => ({
+    date: e.date,
+    note: e.note || '',
+    meals: e.meals
+      ? Object.fromEntries(MEAL_SLOTS.map(({ key }) => [key, asList(e.meals[key])]))
       : {
-          date: e.date,
-          note: e.note || '',
-          meals: {
-            breakfast: null,
-            lunch: null,
-            dinner: e.type ? { type: e.type, text: e.text || null, recipeId: e.recipeId || null } : null,
-          },
-        }
-  );
+          breakfast: [],
+          lunch: [],
+          dinner: e.type ? [{ type: e.type, text: e.text || null, recipeId: e.recipeId || null }] : [],
+        },
+  }));
 }
 
 function save() {
@@ -117,6 +118,20 @@ function planRecipeOf(id) {
     id: r.id, title: r.title, ownerId: r.ownerId, ownerName: r.ownerName, mine: r.ownerId === state.me.id,
     prep: r.prep, cook: r.cook, servings: r.servings, ing: r.ing,
     photoUrl: r.photos?.[0]?.url || null,
+  };
+}
+
+/** A stored day in the shape the app reads: every meal a list of entries. */
+function readDay(e) {
+  return {
+    date: e.date,
+    note: e.note || '',
+    meals: Object.fromEntries(
+      MEAL_SLOTS.map(({ key }) => [
+        key,
+        (e.meals[key] || []).map((m) => ({ ...m, recipe: m.type === 'recipe' ? planRecipeOf(m.recipeId) : null })),
+      ])
+    ),
   };
 }
 
@@ -189,7 +204,7 @@ export const mockApi = {
   updateRecipe: async (id, body) => {
     const r = findRecipe(id);
     if (body.nut && Object.keys(body).length <= 2) {
-      r.nut = { cal: +body.nut.cal || 0, pro: +body.nut.pro || 0, carb: +body.nut.carb || 0, fat: +body.nut.fat || 0 };
+      r.nut = cleanNut(body.nut);
       r.nutEdited = body.nutEdited !== false;
     } else if ('rating' in body && Object.keys(body).length === 1) {
       r.rating = Math.max(0, Math.min(5, Math.round(+body.rating || 0)));
@@ -283,48 +298,30 @@ export const mockApi = {
     return { ok: true };
   },
 
-  plan: async (start, end) => {
-    const entries = (state.plan || [])
-      .filter((e) => e.date >= start && e.date <= end)
-      .map((e) => ({
-        date: e.date,
-        note: e.note || '',
-        meals: Object.fromEntries(
-          MEAL_SLOTS.map(({ key }) => {
-            const m = e.meals[key];
-            return [key, m ? { ...m, recipe: m.type === 'recipe' ? planRecipeOf(m.recipeId) : null } : null];
-          })
-        ),
-      }));
-    return { entries };
-  },
+  plan: async (start, end) => ({
+    entries: (state.plan || []).filter((e) => e.date >= start && e.date <= end).map(readDay),
+  }),
   setPlanDay: async (date, body) => {
     state.plan = state.plan || [];
     const prev = state.plan.find((e) => e.date === date) || {
-      date, note: '', meals: { breakfast: null, lunch: null, dinner: null },
+      date, note: '', meals: { breakfast: [], lunch: [], dinner: [] },
     };
+    // Whatever a meal is sent as replaces it — one entry, a list, or null
     for (const { key } of MEAL_SLOTS) {
       if (!(key in body)) continue;
-      const d = body[key];
-      prev.meals[key] = d ? { type: d.type, text: d.type === 'text' ? d.text : null, recipeId: d.type === 'recipe' ? d.recipeId : null } : null;
+      prev.meals[key] = (body[key] == null ? [] : [].concat(body[key])).map((d) => ({
+        id: uid(),
+        type: d.type,
+        text: d.type === 'text' ? d.text : null,
+        recipeId: d.type === 'recipe' ? d.recipeId : null,
+      }));
     }
     if ('note' in body) prev.note = String(body.note || '').trim();
     state.plan = state.plan.filter((e) => e.date !== date);
-    const anything = prev.note || MEAL_SLOTS.some(({ key }) => prev.meals[key]);
+    const anything = prev.note || MEAL_SLOTS.some(({ key }) => prev.meals[key].length);
     if (anything) state.plan.push(prev);
     save();
-    return {
-      entry: {
-        date: prev.date,
-        note: prev.note,
-        meals: Object.fromEntries(
-          MEAL_SLOTS.map(({ key }) => {
-            const m = prev.meals[key];
-            return [key, m ? { ...m, recipe: m.type === 'recipe' ? planRecipeOf(m.recipeId) : null } : null];
-          })
-        ),
-      },
-    };
+    return { entry: readDay(prev) };
   },
 
   pantry: async () => ({ items: state.pantry || [] }),
@@ -350,6 +347,13 @@ export const mockApi = {
     }
     // A rename that doesn't lead with a number keeps the count it already had
     Object.assign(item, { name: p.name, qty: p.hadQty ? p.qty : item.qty, unit: p.hadQty ? p.unit : item.unit });
+    save();
+    return { item };
+  },
+  setPantryQty: async (id, qty) => {
+    const item = (state.pantry || []).find((x) => x.id === id);
+    if (!item) throw new Error('That item isn’t in your kitchen');
+    item.qty = Math.max(0, +qty || 0);
     save();
     return { item };
   },

@@ -15,6 +15,22 @@ export const json = (data, init = {}) =>
     headers: { 'content-type': 'application/json; charset=utf-8', ...(init.headers || {}) },
   });
 
+/**
+ * Nutrition as it's stored: the four numbers, plus what one serving actually
+ * is when the source says so — "5 meatballs with sauce" tells you far more
+ * than "333 calories" on its own. Blank when nobody has said.
+ */
+export function cleanNut(n) {
+  const serving = String(n?.serving ?? '').trim().slice(0, 60);
+  return {
+    cal: +n?.cal || 0,
+    pro: +n?.pro || 0,
+    carb: +n?.carb || 0,
+    fat: +n?.fat || 0,
+    ...(serving ? { serving } : null),
+  };
+}
+
 // Same placeholder heuristic as the design prototype — scales with ingredient count.
 export function autoNut(ingCount) {
   const n = ingCount;
@@ -35,8 +51,54 @@ export function sanitizeRecipeInput(body) {
     dir: list(body.dir),
     notes: clean(body.notes),
     source: clean(body.source) || null,
-    nut: nut ? { cal: +nut.cal || 0, pro: +nut.pro || 0, carb: +nut.carb || 0, fat: +nut.fat || 0 } : null,
+    nut: nut ? cleanNut(nut) : null,
   };
+}
+
+// ---------- how much a recipe makes ----------
+
+// Words that mean "a portion of the meal" rather than a thing the recipe makes
+const SERVING_WORDS = /^(?:serving|serve|portion|people|person|adult|guest|dish)$/i;
+
+const singularish = (w) => (w.length > 3 && /[^s]s$/.test(w) ? w.slice(0, -1) : w);
+
+/** "about 35 meatballs" → { count: 35, unit: 'meatball' }; "4" → { count: 4, unit: '' } */
+function countAndUnit(text) {
+  // A range is really its lower end — "6–8 servings" feeds 6
+  const t = String(text ?? '').replace(/(\d)\s*(?:-|–|—|\bto\b)\s*\d+/g, '$1');
+  const m = /(\d+(?:\.\d+)?)\s*([A-Za-z]+)?/.exec(t);
+  if (!m) return { count: 0, unit: '' };
+  return { count: parseFloat(m[1]), unit: singularish((m[2] || '').toLowerCase()) };
+}
+
+/**
+ * How many servings a recipe makes, from what it says it yields.
+ *
+ * A yield is often a count of things rather than of meals — "about 35
+ * meatballs" is not 35 dinners — so when the nutrition says what one serving
+ * is in the same units ("5 meatballs with sauce"), the two are divided into
+ * each other and this recipe correctly serves seven. Without that second
+ * number there's nothing better to go on than the count itself, which is the
+ * right answer anyway for the "12 cookies" kind of yield.
+ *
+ * `recipeYield` may be a list: sites publish the yield twice, once as a bare
+ * number and once as the phrase that says what is being counted.
+ * Mirrored in web/src/util.js for the paste parser.
+ */
+export function servingsOf(recipeYield, servingSize) {
+  const parts = (Array.isArray(recipeYield) ? recipeYield : [recipeYield])
+    .map((v) => String(v ?? '').trim())
+    .filter(Boolean)
+    .map(countAndUnit)
+    .filter((p) => p.count > 0);
+  if (!parts.length) return 1;
+  const yielded = parts.find((p) => p.unit) || parts[0];
+  const whole = (n) => Math.max(1, Math.round(n));
+  if (!yielded.unit || SERVING_WORDS.test(yielded.unit)) return whole(yielded.count);
+
+  const per = countAndUnit(servingSize);
+  if (per.count > 0 && per.unit === yielded.unit) return whole(yielded.count / per.count);
+  return whole(yielded.count);
 }
 
 // ---------- meal plan ----------
@@ -83,14 +145,26 @@ export function normalizeSpoken(text) {
   return withQty.replace(/^(\d+(?:\.\d+)?\s+[A-Za-z]+)\s+of\s+/i, '$1 ');
 }
 
+// The count doesn't always come first: plenty of people write the thing they
+// have and then how much of it — "spaghetti 2 bags", "eggs 12". Only read as a
+// count when the line ends there, so "9x13 pan" and "chili powder" are safe.
+const TRAILING_QTY = /^(.*[A-Za-z].*?)\s+(\d+(?:\.\d+)?)\s*([A-Za-z]+)?$/;
+
 export function parsePantryEntry(text) {
   const v = normalizeSpoken(text);
-  const hadQty = /^\d/.test(v);
   const m = v.match(/^(\d+(?:\.\d+)?)\s*([A-Za-z]+)?\s+(.+)$/);
-  if (!m) return { name: v, qty: 1, unit: '', hadQty };
-  const unit = (m[2] || '').toLowerCase();
-  if (m[2] && PANTRY_UNITS.has(unit)) return { name: m[3].trim(), qty: parseFloat(m[1]), unit, hadQty };
-  return { name: (m[2] ? `${m[2]} ` : '') + m[3].trim(), qty: parseFloat(m[1]), unit: '', hadQty };
+  if (m) {
+    const unit = (m[2] || '').toLowerCase();
+    if (m[2] && PANTRY_UNITS.has(unit)) return { name: m[3].trim(), qty: parseFloat(m[1]), unit, hadQty: true };
+    return { name: (m[2] ? `${m[2]} ` : '') + m[3].trim(), qty: parseFloat(m[1]), unit: '', hadQty: true };
+  }
+  const t = v.match(TRAILING_QTY);
+  // A word after the trailing number has to be a unit — otherwise it's part of
+  // the name ("Route 66 sauce"), and the line is just an item with no count.
+  if (t && (!t[3] || PANTRY_UNITS.has(t[3].toLowerCase()))) {
+    return { name: t[1].trim(), qty: parseFloat(t[2]), unit: (t[3] || '').toLowerCase(), hadQty: true };
+  }
+  return { name: v, qty: 1, unit: '', hadQty: false };
 }
 
 /**

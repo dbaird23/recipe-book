@@ -31,6 +31,8 @@ export default function Recipe({
     isMine ? (recipe.from ? `Saved from ${recipe.from}` : `Added by ${user.name}`) : `Added by ${recipe.ownerName}`,
   ].filter(Boolean).join(' · ');
   const nut = nutDraft || recipe.nut;
+  // One note per line, the way they were written or imported
+  const notes = (recipe.notes || '').split('\n').map((t) => t.trim()).filter(Boolean);
 
   async function postComment() {
     const text = commentText.trim();
@@ -48,7 +50,16 @@ export default function Recipe({
   function saveNut() {
     setNutEditOpen(false);
     if (nutDraft) {
-      onUpdateNut({ cal: +nutDraft.cal || 0, pro: +nutDraft.pro || 0, carb: +nutDraft.carb || 0, fat: +nutDraft.fat || 0 }, true);
+      onUpdateNut(
+        {
+          cal: +nutDraft.cal || 0,
+          pro: +nutDraft.pro || 0,
+          carb: +nutDraft.carb || 0,
+          fat: +nutDraft.fat || 0,
+          serving: (nutDraft.serving || '').trim(),
+        },
+        true
+      );
       setNutDraft(null);
     }
   }
@@ -230,8 +241,8 @@ export default function Recipe({
             <textarea
               className="textarea"
               style={{ border: 'none', background: 'none', padding: 0, resize: 'vertical', lineHeight: 1.55 }}
-              rows={3}
-              placeholder="Tweaks, brand swaps, what to try next time…"
+              rows={4}
+              placeholder={'One note per line —\nmake ahead, brand swaps, what to try next time…'}
               value={notesDraft}
               onChange={(e) => setNotesDraft(e.target.value)}
               autoFocus
@@ -246,14 +257,33 @@ export default function Recipe({
               </button>
             </div>
           </div>
-        ) : recipe.notes ? (
+        ) : notes.length ? (
           <div
             className="note-card"
             style={{ padding: '13px 14px', cursor: isMine ? 'pointer' : 'default' }}
             onClick={() => { if (isMine) { setNotesDraft(recipe.notes); setNotesEditOpen(true); } }}
           >
-            <div style={{ fontSize: 14, lineHeight: 1.55, color: '#4c4a3c', whiteSpace: 'pre-wrap' }}>{recipe.notes}</div>
-            {isMine && <div style={{ fontSize: 11.5, color: '#b0a884', marginTop: 6, fontWeight: 600 }}>Tap to edit</div>}
+            {/* Numbered like the directions: notes come in a list — make ahead,
+                freezing, the swap that saves it — and a number is how you say
+                "the second one" to whoever else is in the kitchen. */}
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+              {notes.map((txt, i) => (
+                <div key={i} style={{ display: 'flex', gap: 10 }}>
+                  {notes.length > 1 && (
+                    <div
+                      style={{
+                        width: 22, height: 22, borderRadius: '50%', background: '#efe7d2', color: '#8a7a4c',
+                        fontSize: 12, fontWeight: 700, display: 'flex', alignItems: 'center', justifyContent: 'center', flex: '0 0 auto',
+                      }}
+                    >
+                      {i + 1}
+                    </div>
+                  )}
+                  <div style={{ fontSize: 14, lineHeight: 1.55, color: '#4c4a3c', paddingTop: notes.length > 1 ? 2 : 0 }}>{txt}</div>
+                </div>
+              ))}
+            </div>
+            {isMine && <div style={{ fontSize: 11.5, color: '#b0a884', marginTop: 8, fontWeight: 600 }}>Tap to edit</div>}
           </div>
         ) : isMine ? (
           <button
@@ -264,13 +294,15 @@ export default function Recipe({
             }}
             onClick={() => { setNotesDraft(''); setNotesEditOpen(true); }}
           >
-            + Add a note — tweaks, brand swaps, ideas for next time
+            + Add a note — tweaks, brand swaps, ideas for next time. One per line.
           </button>
         ) : (
           <div style={{ fontSize: 13, color: 'var(--faint)' }}>No notes on this one.</div>
         )}
 
-        <SectionLabel style={{ margin: '24px 0 10px' }}>Nutrition · Per serving</SectionLabel>
+        <SectionLabel style={{ margin: '24px 0 10px' }}>
+          Nutrition · Per {recipe.nut.serving || 'serving'}
+        </SectionLabel>
         <div className="card" style={{ padding: 14 }}>
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 10 }}>
             <span
@@ -304,10 +336,18 @@ export default function Recipe({
                   </div>
                 ))}
               </div>
+              {/* "5 meatballs with sauce" says far more than the numbers do */}
+              <input
+                className="input"
+                style={{ padding: 8, borderRadius: 8, marginTop: 8 }}
+                placeholder="One serving is… e.g. 5 meatballs with sauce"
+                value={nut.serving || ''}
+                onChange={(e) => setNutDraft({ ...nut, serving: e.target.value })}
+              />
               <button
                 className="btn-text-green"
                 style={{ marginTop: 10 }}
-                onClick={() => { setNutEditOpen(false); setNutDraft(null); onUpdateNut(autoNut(recipe.ing.length), false); }}
+                onClick={() => { setNutEditOpen(false); setNutDraft(null); onUpdateNut({ ...autoNut(recipe.ing.length), serving: '' }, false); }}
               >
                 Reset to auto
               </button>
@@ -322,6 +362,8 @@ export default function Recipe({
                   </div>
                 ))}
               </div>
+              {/* The serving size is already in the heading above, so the
+                  footnote only has to say where the numbers came from */}
               <div style={{ fontSize: 11, color: '#b0b6aa', marginTop: 10, lineHeight: 1.4 }}>
                 {recipe.nutEdited
                   ? 'From the recipe, not estimated.'

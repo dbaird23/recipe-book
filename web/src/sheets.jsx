@@ -291,13 +291,19 @@ export function FilterSheet({ filters, setFilters, customTags = [], resultCount,
   );
 }
 
+/**
+ * One box does both jobs: what you type filters your recipes, and if none of
+ * them are what you meant — or you never meant a recipe at all — the same
+ * words are waiting at the bottom of the list as a plain line to add.
+ */
 export function PlanPickerSheet({ dayName, mealLabel, already = 0, recipes, onPickRecipe, onPickLeftovers, onPickText, onClose, toast }) {
   const [q, setQ] = useState('');
-  const [free, setFree] = useState('');
-  const query = q.trim().toLowerCase();
+  const typed = q.trim();
+  const query = typed.toLowerCase();
   const items = recipes.filter(
     (r) => !query || r.title.toLowerCase().includes(query) || r.tags.some((t) => t.toLowerCase().includes(query))
   );
+  const add = () => (typed ? onPickText(typed) : toast('Type something first'));
 
   return (
     <Sheet onClose={onClose}>
@@ -321,29 +327,17 @@ export function PlanPickerSheet({ dayName, mealLabel, already = 0, recipes, onPi
           Surprise me
         </button>
       </div>
-      <div style={{ display: 'flex', gap: 8, marginTop: 10 }}>
+      <form onSubmit={(e) => { e.preventDefault(); add(); }}>
         <input
           className="input"
-          value={free}
-          onChange={(e) => setFree(e.target.value)}
-          placeholder="Or type anything — 'Takeout', 'Date night'…"
-          style={{ flex: 1, minWidth: 0, padding: '9px 12px' }}
+          value={q}
+          onChange={(e) => setQ(e.target.value)}
+          onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); add(); } }}
+          enterKeyHint="done"
+          placeholder="Search a recipe, or type anything…"
+          style={{ marginTop: 12, padding: '9px 12px' }}
         />
-        <button
-          className="btn-pill-solid"
-          style={{ flex: '0 0 auto', padding: '9px 15px' }}
-          onClick={() => (free.trim() ? onPickText(free.trim()) : toast('Type something first'))}
-        >
-          Add
-        </button>
-      </div>
-      <input
-        className="input"
-        value={q}
-        onChange={(e) => setQ(e.target.value)}
-        placeholder="Search your and friends' recipes"
-        style={{ marginTop: 14, padding: '9px 12px' }}
-      />
+      </form>
       <div style={{ flex: 1, overflowY: 'auto', marginTop: 10, display: 'flex', flexDirection: 'column', gap: 6, minHeight: 120 }}>
         {items.map((r) => (
           <button
@@ -366,8 +360,35 @@ export function PlanPickerSheet({ dayName, mealLabel, already = 0, recipes, onPi
             </div>
           </button>
         ))}
-        {items.length === 0 && (
-          <div style={{ textAlign: 'center', color: 'var(--faint)', fontSize: 13, padding: 24 }}>No recipes match.</div>
+        {typed && (
+          <button
+            onClick={add}
+            style={{
+              display: 'flex', gap: 10, alignItems: 'center', background: 'none', border: '1px dashed var(--input-bd)',
+              borderRadius: 12, padding: '9px 12px', cursor: 'pointer', textAlign: 'left',
+            }}
+          >
+            <div
+              style={{
+                width: 36, height: 36, borderRadius: 8, flex: '0 0 auto', background: 'var(--green-soft)',
+                color: 'var(--green)', display: 'flex', alignItems: 'center', justifyContent: 'center',
+                fontSize: 19, fontWeight: 600, lineHeight: 1,
+              }}
+            >
+              +
+            </div>
+            <div style={{ flex: 1, minWidth: 0 }}>
+              <div style={{ fontSize: 14, fontWeight: 600, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                Add &ldquo;{typed}&rdquo;
+              </div>
+              <div style={{ fontSize: 12, color: 'var(--muted)', marginTop: 1 }}>
+                {items.length ? 'Just these words, not a recipe' : 'No recipe matches — plan it as typed'}
+              </div>
+            </div>
+          </button>
+        )}
+        {!typed && items.length === 0 && (
+          <div style={{ textAlign: 'center', color: 'var(--faint)', fontSize: 13, padding: 24 }}>No recipes yet.</div>
         )}
       </div>
     </Sheet>

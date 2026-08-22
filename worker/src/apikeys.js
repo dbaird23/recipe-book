@@ -1,5 +1,5 @@
 // API keys: a second way to authenticate, for tools that have no browser and
-// so no session cookie — Cursor's AI, the MCP server, a shell script.
+// so no session cookie: Cursor's AI, the MCP server, a shell script.
 //
 // A key authenticates as its owner but reaches a deliberately smaller surface
 // than a signed-in browser does: routes opt in individually (see `KEY` in
@@ -40,7 +40,7 @@ export async function createApiKey(db, userId, name) {
   const clean = String(name || '').trim().slice(0, 60);
   if (!clean) throw new HttpError(400, 'Give the key a name so you know what it’s for');
   const { n } = await db.prepare('SELECT COUNT(*) AS n FROM api_keys WHERE user_id=?').bind(userId).first();
-  if (n >= 10) throw new HttpError(409, 'You already have 10 keys — revoke one first');
+  if (n >= 10) throw new HttpError(409, 'You already have 10 keys. Revoke one first');
 
   const token = PREFIX + hex(crypto.getRandomValues(new Uint8Array(TOKEN_BYTES)));
   const row = {
@@ -85,7 +85,7 @@ export async function userForToken(db, token) {
   return { user, key: { id: key_id, name: key_name } };
 }
 
-/** Fire-and-forget "last used" stamp — skipped when it was written recently. */
+/** Fire-and-forget "last used" stamp, skipped when it was written recently. */
 export function touchApiKey(db, keyId) {
   const now = Date.now();
   return db

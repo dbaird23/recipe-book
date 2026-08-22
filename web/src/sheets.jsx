@@ -110,7 +110,7 @@ const CODE_BOX = {
 
 /**
  * API keys, for pointing an AI assistant at your recipes. The token is shown
- * once, at creation — after that only its first few characters are recoverable,
+ * once, at creation. After that only its first few characters are recoverable,
  * so the sheet leans on making that one moment easy to copy from.
  */
 export function ApiKeysSheet({ onClose, toast }) {
@@ -168,7 +168,7 @@ export function ApiKeysSheet({ onClose, toast }) {
     return (
       <Sheet onClose={onClose}>
         <div className="sheet-title">Here&rsquo;s the key</div>
-        <div className="sheet-sub">Copy it now — for safety it isn&rsquo;t shown again.</div>
+        <div className="sheet-sub">Copy it now. For safety it isn&rsquo;t shown again.</div>
         <div style={{ ...CODE_BOX, marginTop: 14, color: 'var(--ink)' }}>{created.token}</div>
         <button className="btn-primary" style={{ marginTop: 10 }} onClick={() => copy(created.token, 'Key')}>
           Copy key
@@ -293,7 +293,7 @@ export function FilterSheet({ filters, setFilters, customTags = [], resultCount,
 
 /**
  * One box does both jobs: what you type filters your recipes, and if none of
- * them are what you meant — or you never meant a recipe at all — the same
+ * them are what you meant (or you never meant a recipe at all), the same
  * words are waiting at the bottom of the list as a plain line to add.
  */
 export function PlanPickerSheet({ dayName, mealLabel, already = 0, recipes, onPickRecipe, onPickLeftovers, onPickText, onClose, toast }) {
@@ -312,7 +312,7 @@ export function PlanPickerSheet({ dayName, mealLabel, already = 0, recipes, onPi
       </div>
       {already > 0 && (
         <div className="sheet-sub">
-          {already === 1 ? 'One thing is' : `${already} things are`} already on this meal — whatever you pick joins it.
+          {already === 1 ? 'One thing is' : `${already} things are`} already on this meal, and whatever you pick joins it.
         </div>
       )}
       <div style={{ display: 'flex', gap: 8, marginTop: 12 }}>
@@ -382,7 +382,7 @@ export function PlanPickerSheet({ dayName, mealLabel, already = 0, recipes, onPi
                 Add &ldquo;{typed}&rdquo;
               </div>
               <div style={{ fontSize: 12, color: 'var(--muted)', marginTop: 1 }}>
-                {items.length ? 'Just these words, not a recipe' : 'No recipe matches — plan it as typed'}
+                {items.length ? 'Just these words, not a recipe' : 'No recipe matches, so plan it as typed'}
               </div>
             </div>
           </button>
@@ -408,7 +408,7 @@ export function ShareSheet({ recipe, onClose, toast }) {
   }
   async function nativeShare() {
     try {
-      await navigator.share({ title: recipe.title, text: `${recipe.title} — from my Recipe Book`, url: link });
+      await navigator.share({ title: recipe.title, text: `${recipe.title}, from my Recipe Book`, url: link });
       onClose();
     } catch {
       /* user cancelled */
@@ -418,7 +418,7 @@ export function ShareSheet({ recipe, onClose, toast }) {
     <Sheet onClose={onClose}>
       <div className="sheet-title">Share this recipe</div>
       <div className="sheet-sub">
-        Friends in your book already see your recipes — send a link to open this one directly.
+        Friends in your book already see your recipes, so send a link to open this one directly.
       </div>
       <div
         style={{
@@ -463,7 +463,7 @@ export function InviteSheet({ onClose, toast }) {
       <div className="sheet-title">Invite a friend</div>
       {invite ? (
         <>
-          <div className="sheet-sub">Their private link to join your Recipe Book — it works once.</div>
+          <div className="sheet-sub">Their private link to join your Recipe Book. It works once.</div>
           <div
             style={{
               marginTop: 14, background: 'var(--card)', border: '1px solid var(--card-bd)', borderRadius: 12,

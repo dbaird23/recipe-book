@@ -18,7 +18,7 @@ function tryWrangler(args, label, { fatal = true } = {}) {
   } catch (e) {
     const out = `${e.stdout || ''}${e.stderr || ''}`;
     if (/already exists/i.test(out)) {
-      console.log(`• ${label} already exists — reusing it`);
+      console.log(`• ${label} already exists, reusing it`);
       return out;
     }
     if (!fatal) {
@@ -36,11 +36,11 @@ const d1Out = tryWrangler(['d1', 'create', 'recipe-book'], 'D1 database');
 
 let dbId = /"?database_id"?\s*[:=]\s*"([0-9a-f-]{36})"/i.exec(d1Out)?.[1];
 if (!dbId) {
-  // Already existed — look it up in the account's database list
+  // Already existed, so look it up in the account's database list
   const list = JSON.parse(wrangler(['d1', 'list', '--json']));
   dbId = list.find((d) => d.name === 'recipe-book')?.uuid;
 }
-if (!dbId) throw new Error('Could not determine the D1 database id — check `npx wrangler d1 list`');
+if (!dbId) throw new Error('Could not determine the D1 database id; check `npx wrangler d1 list`');
 
 const config = readFileSync(configPath, 'utf8');
 const updated = config.replace(/"database_id":\s*"[^"]*"/, `"database_id": "${dbId}"`);

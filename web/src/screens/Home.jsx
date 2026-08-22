@@ -55,7 +55,7 @@ export default function Home({
 function EmptyState({ hasAny, wide }) {
   return (
     <div style={{ textAlign: 'center', color: 'var(--faint)', fontSize: 14, padding: '48px 20px', gridColumn: wide ? '1 / -1' : undefined, lineHeight: 1.6 }}>
-      {hasAny ? 'No recipes match. Try another tag or add one with +.' : 'Your book is empty — add your first recipe with +.'}
+      {hasAny ? 'No recipes match. Try another tag or add one with +.' : 'Your book is empty. Add your first recipe with +.'}
     </div>
   );
 }

@@ -1,5 +1,5 @@
 // In-browser API for the static demo build (GitHub Pages). Same interface as
-// the real api client, backed by localStorage — single-player, no server.
+// the real api client, backed by localStorage. Single-player, no server.
 import { DEMO_MY_RECIPES, DEMO_FRIENDS, DEMO_PANTRY } from './demoData.js';
 import { autoNut, cleanNut, parsePantryEntry, grocerySection, GROCERY_SECTIONS, MEAL_SLOTS } from './util.js';
 
@@ -72,7 +72,7 @@ let state = null;
 try {
   state = JSON.parse(localStorage.getItem(KEY));
 } catch {
-  /* corrupted storage — reseed on sign-in */
+  /* corrupted storage: reseed on sign-in */
 }
 
 // Demo state predates breakfast and lunch (one dinner per day), and then
@@ -97,7 +97,7 @@ function save() {
   try {
     localStorage.setItem(KEY, JSON.stringify(state));
   } catch {
-    /* quota exceeded (usually big photos) — demo keeps working in memory */
+    /* quota exceeded (usually big photos); demo keeps working in memory */
   }
 }
 
@@ -136,7 +136,7 @@ function readDay(e) {
 }
 
 function demoOnly() {
-  throw new Error('This needs the real app — the demo is single-player');
+  throw new Error('This needs the real app; the demo is single-player');
 }
 
 export const mockApi = {
@@ -306,7 +306,7 @@ export const mockApi = {
     const prev = state.plan.find((e) => e.date === date) || {
       date, note: '', meals: { breakfast: [], lunch: [], dinner: [] },
     };
-    // Whatever a meal is sent as replaces it — one entry, a list, or null
+    // Whatever a meal is sent as replaces it: one entry, a list, or null
     for (const { key } of MEAL_SLOTS) {
       if (!(key in body)) continue;
       prev.meals[key] = (body[key] == null ? [] : [].concat(body[key])).map((d) => ({
@@ -394,6 +394,6 @@ export const mockApi = {
   },
 
   importUrl: async () => {
-    throw new Error('URL import needs the real server — try “paste the text” instead');
+    throw new Error('URL import needs the real server. Try “paste the text” instead');
   },
 };

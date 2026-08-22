@@ -74,7 +74,7 @@ function SwipeRow({ onDelete, deleteLabel, children }) {
 
 /**
  * One line to buy. An ingredient several of the week's meals want is a single
- * line here, and it says so — tapping the count opens the recipes behind it so
+ * line here, and it says so: tapping the count opens the recipes behind it so
  * you can see what you'd be short of if you skipped it. Ticking it off takes it
  * off the list; swiping it left removes it altogether.
  */
@@ -194,11 +194,11 @@ function AddRow({ onAdd }) {
 }
 
 /**
- * The week's shopping, in aisle order rather than by day — one walk through the
+ * The week's shopping, in aisle order rather than by day, so it's one walk through the
  * shop instead of seven. Ticks live in the browser, so they survive a reload
  * but don't need a round trip while you're standing in an aisle.
  *
- * Ticking something off takes it off the list rather than greying it out — what
+ * Ticking something off takes it off the list rather than greying it out, because what
  * you want in front of you in a shop is what you still have to find. The ones
  * you've got are folded away at the bottom, a tap from coming back, and any
  * aisle you don't walk down folds away too.
@@ -208,7 +208,7 @@ export default function Groceries({
 }) {
   const [showSkipped, setShowSkipped] = useState(false);
   const [showDone, setShowDone] = useState(false);
-  // Which aisles are folded away — a standing preference, not a per-week one:
+  // Which aisles are folded away. A standing preference, not a per-week one:
   // the aisle you never walk down is the same aisle every week.
   const [collapsed, setCollapsed] = useState(() => {
     try {
@@ -297,10 +297,10 @@ export default function Groceries({
         {left.length === 0 && (
           <div style={{ textAlign: 'center', color: 'var(--faint)', fontSize: 13, padding: 24, lineHeight: 1.6 }}>
             {done.length > 0
-              ? 'That’s everything — the whole list is in the trolley.'
+              ? 'That’s everything. The whole list is in the trolley.'
               : skipped.length > 0
                 ? 'Everything this week is already in your kitchen.'
-                : 'Plan a meal and its ingredients show up here — or add something yourself above.'}
+                : 'Plan a meal and its ingredients show up here, or add something yourself above.'}
           </div>
         )}
 

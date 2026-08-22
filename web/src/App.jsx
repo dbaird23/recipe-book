@@ -57,7 +57,7 @@ export default function App() {
   // shop doesn't quietly hide this week's flour.
   const [groceryChecked, setGroceryChecked] = useState(() => readStore('rb-grocery-v3'));
   const [groceryHidden, setGroceryHidden] = useState(() => readStore('rb-grocery-hidden-v1'));
-  // pantry — what's already in the kitchen, so the grocery list can skip it
+  // pantry: what's already in the kitchen, so the grocery list can skip it
   const [pantry, setPantry] = useState([]);
   // groceries added by hand, alongside whatever the week's plan calls for
   const [groceryItems, setGroceryItems] = useState([]);
@@ -177,7 +177,7 @@ export default function App() {
     }
   }
 
-  // Which slot the picker was opened on, then shut it — the sheet closes as
+  // Which slot the picker was opened on, then shut it. The sheet closes as
   // the write goes out, so the day and meal have to be read first
   function closePicker() {
     const { day, slot } = picking;
@@ -185,7 +185,7 @@ export default function App() {
     return { date: isoDate(day.date), meal: slot.key };
   }
 
-  /** What's already on a meal, as the write body wants it back — in render order. */
+  /** What's already on a meal, as the write body wants it back, in render order. */
   function mealItems(date, meal) {
     const entry = planEntries.find((e) => e.date === date);
     return (entry?.meals?.[meal] || []).map((m) =>
@@ -194,12 +194,12 @@ export default function App() {
   }
 
   // A meal that still points at a deleted or unfriended recipe can't be written
-  // back — there's no recipe left to name — so rewriting the meal quietly drops
+  // back, since there's no recipe left to name, so rewriting the meal quietly drops
   // the slot that already reads "Recipe unavailable".
   const writable = (list) => list.filter((m) => m.type !== 'recipe' || m.recipeId);
 
   // A meal is replaced wholesale, so adding one dish means sending the ones
-  // already there alongside it — and dropping one means sending the rest.
+  // already there alongside it, and dropping one means sending the rest.
   const addToMeal = (date, meal, item) =>
     savePlanDay(date, { [meal]: [...writable(mealItems(date, meal)), item] });
 

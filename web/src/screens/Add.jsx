@@ -35,7 +35,7 @@ export function AddStep1({ onCancel, onDraft, toast }) {
     const { nut, ...r } = parseText(pasteText);
     // Carry parsed nutrition through as an override so it isn't re-estimated
     onDraft({ ...r, tags: [], source: null, photoUrls: [], nutImport: nut || undefined });
-    toast(nut ? 'Recipe parsed — including nutrition' : 'Recipe parsed');
+    toast(nut ? 'Recipe parsed, including nutrition' : 'Recipe parsed');
   }
 
   return (
@@ -138,7 +138,7 @@ export function AddStep2({ draft: initial, editing, knownTags = [], onBack, onSa
       <div className="scroll" style={{ padding: '8px 20px 24px', display: 'flex', flexDirection: 'column', gap: 14 }}>
         {d.source && (
           <div style={{ background: 'var(--green-soft)', borderRadius: 12, padding: '10px 14px', fontSize: 13, color: '#4c5a4c', lineHeight: 1.45 }}>
-            Imported from <strong>{d.source}</strong> — they&rsquo;ll be credited as the original creator.
+            Imported from <strong>{d.source}</strong>. They&rsquo;ll be credited as the original creator.
           </div>
         )}
         {d.from && (
@@ -206,7 +206,7 @@ export function AddStep2({ draft: initial, editing, knownTags = [], onBack, onSa
             <input
               className="input"
               style={{ flex: 1, minWidth: 0, borderRadius: 999, padding: '6px 14px' }}
-              placeholder="New tag — e.g. Taco night"
+              placeholder="New tag, e.g. Taco night"
               value={newTag}
               onChange={(e) => setNewTag(e.target.value)}
               onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); addNewTag(); } }}

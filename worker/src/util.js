@@ -17,7 +17,7 @@ export const json = (data, init = {}) =>
 
 /**
  * Nutrition as it's stored: the four numbers, plus what one serving actually
- * is when the source says so — "5 meatballs with sauce" tells you far more
+ * is when the source says so: "5 meatballs with sauce" tells you far more
  * than "333 calories" on its own. Blank when nobody has said.
  */
 export function cleanNut(n) {
@@ -31,7 +31,7 @@ export function cleanNut(n) {
   };
 }
 
-// Same placeholder heuristic as the design prototype — scales with ingredient count.
+// Same placeholder heuristic as the design prototype; scales with ingredient count.
 export function autoNut(ingCount) {
   const n = ingCount;
   return { cal: 160 + n * 38, pro: 4 + n * 4, carb: 10 + n * 5, fat: 4 + n * 3 };
@@ -64,7 +64,7 @@ const singularish = (w) => (w.length > 3 && /[^s]s$/.test(w) ? w.slice(0, -1) : 
 
 /** "about 35 meatballs" → { count: 35, unit: 'meatball' }; "4" → { count: 4, unit: '' } */
 function countAndUnit(text) {
-  // A range is really its lower end — "6–8 servings" feeds 6
+  // A range is really its lower end, so "6–8 servings" feeds 6
   const t = String(text ?? '').replace(/(\d)\s*(?:-|–|—|\bto\b)\s*\d+/g, '$1');
   const m = /(\d+(?:\.\d+)?)\s*([A-Za-z]+)?/.exec(t);
   if (!m) return { count: 0, unit: '' };
@@ -74,8 +74,8 @@ function countAndUnit(text) {
 /**
  * How many servings a recipe makes, from what it says it yields.
  *
- * A yield is often a count of things rather than of meals — "about 35
- * meatballs" is not 35 dinners — so when the nutrition says what one serving
+ * A yield is often a count of things rather than of meals ("about 35
+ * meatballs" is not 35 dinners), so when the nutrition says what one serving
  * is in the same units ("5 meatballs with sauce"), the two are divided into
  * each other and this recipe correctly serves seven. Without that second
  * number there's nothing better to go on than the count itself, which is the
@@ -111,7 +111,7 @@ export const MEALS = ['breakfast', 'lunch', 'dinner'];
 export const PANTRY_LOCATIONS = ['pantry', 'fridge', 'freezer'];
 
 // Words we'll lift out of "2 cans black beans" as the unit. Anything else
-// after the number belongs to the name — "3 large onions" is 3 of "large
+// after the number belongs to the name: "3 large onions" is 3 of "large
 // onions", not 3 larges.
 const PANTRY_UNITS = new Set([
   'can', 'cans', 'lb', 'lbs', 'pound', 'pounds', 'oz', 'box', 'boxes', 'bag', 'bags',
@@ -126,8 +126,8 @@ const PANTRY_UNITS = new Set([
  * line led with a number, which is how an edit tells "rename it" from
  * "rename it and recount it".
  */
-// Dictation writes small numbers as words and leaves in the "of" nobody types
-// — "two cans of black beans". Both are straightened out before the line is
+// Dictation writes small numbers as words and leaves in the "of" nobody types,
+// as in "two cans of black beans". Both are straightened out before the line is
 // read apart, so a dictated shelf reads the same as a typed one. Mirrored in
 // web/src/util.js.
 const NUMBER_WORDS = {
@@ -141,12 +141,12 @@ export function normalizeSpoken(text) {
   const lead = v.match(/^([A-Za-z]+)\b\s*/);
   const n = lead && NUMBER_WORDS[lead[1].toLowerCase()];
   const withQty = n ? `${n} ${v.slice(lead[0].length)}` : v;
-  // Only after a unit — "1 bag of rice" is a bag of rice, "Bag of Holding" isn't
+  // Only after a unit: "1 bag of rice" is a bag of rice, "Bag of Holding" isn't
   return withQty.replace(/^(\d+(?:\.\d+)?\s+[A-Za-z]+)\s+of\s+/i, '$1 ');
 }
 
 // The count doesn't always come first: plenty of people write the thing they
-// have and then how much of it — "spaghetti 2 bags", "eggs 12". Only read as a
+// have and then how much of it: "spaghetti 2 bags", "eggs 12". Only read as a
 // count when the line ends there, so "9x13 pan" and "chili powder" are safe.
 const TRAILING_QTY = /^(.*[A-Za-z].*?)\s+(\d+(?:\.\d+)?)\s*([A-Za-z]+)?$/;
 
@@ -159,7 +159,7 @@ export function parsePantryEntry(text) {
     return { name: (m[2] ? `${m[2]} ` : '') + m[3].trim(), qty: parseFloat(m[1]), unit: '', hadQty: true };
   }
   const t = v.match(TRAILING_QTY);
-  // A word after the trailing number has to be a unit — otherwise it's part of
+  // A word after the trailing number has to be a unit; otherwise it's part of
   // the name ("Route 66 sauce"), and the line is just an item with no count.
   if (t && (!t[3] || PANTRY_UNITS.has(t[3].toLowerCase()))) {
     return { name: t[1].trim(), qty: parseFloat(t[2]), unit: (t[3] || '').toLowerCase(), hadQty: true };
@@ -171,8 +171,8 @@ export function parsePantryEntry(text) {
  * The pantry item that covers an ingredient line, or null. "Kidney beans"
  * covers "2 cans kidney beans, drained". Deliberately loose and blind to a
  * trailing plural: a wrong skip costs one trip down an aisle, and every skip
- * is listed back to you. Names under three characters never match — too many
- * false hits. Mirrored in web/src/util.js for the in-browser grocery list.
+ * is listed back to you. Names under three characters never match, because too
+ * many false hits follow. Mirrored in web/src/util.js for the in-browser grocery list.
  */
 export function pantrySkip(text, items) {
   const t = String(text).toLowerCase();
@@ -197,7 +197,7 @@ export const GROCERY_SECTIONS = [
   { key: 'other', label: 'Other' },
 ];
 
-// First match wins, so the exceptions sit above the general rules — "chicken
+// First match wins, so the exceptions sit above the general rules: "chicken
 // broth" is a pantry shelf, not the meat counter, and "dried dill" is a spice
 // jar rather than a bunch of herbs. Like pantrySkip this is deliberately loose:
 // a mis-filed line costs you a few steps in the shop, and anything it doesn't

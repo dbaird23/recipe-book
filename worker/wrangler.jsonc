@@ -29,7 +29,7 @@
   ],
 
   "vars": {
-    // Public (not a secret) — it ships in the client bundle. Setting it
+    // Public (not a secret); it ships in the client bundle. Setting it
     // enables Google sign-in and disables the dev sign-in fallback.
     "GOOGLE_CLIENT_ID": "590088983636-k1d0sft1bvg8o0la2cnn59kv2j043o0f.apps.googleusercontent.com"
   },

@@ -1,4 +1,4 @@
--- Personal API keys — how an outside tool (Cursor, a script, the MCP server)
+-- Personal API keys: how an outside tool (Cursor, a script, the MCP server)
 -- signs in as a member without a browser session.
 --
 -- Only the SHA-256 of the token is stored; the plaintext is shown once at

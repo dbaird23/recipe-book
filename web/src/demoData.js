@@ -1,4 +1,4 @@
-// Sample content for the static demo build (GitHub Pages) — same data the
+// Sample content for the static demo build (GitHub Pages). Same data the
 // server seed script uses, but living entirely in the browser.
 
 export const DEMO_MY_RECIPES = [
@@ -8,7 +8,7 @@ export const DEMO_MY_RECIPES = [
     ing: ['2 lb chicken thighs, boneless', '1 lemon, juiced and zested', '4 cloves garlic, minced', '2 tbsp olive oil', '1 tsp dried oregano', 'Salt and pepper'],
     dir: ['Whisk lemon juice, zest, garlic, oil and oregano; season chicken.', 'Marinate 10 minutes while a skillet heats over medium-high.', 'Sear chicken 5–6 minutes per side until golden and cooked through.', 'Rest 5 minutes, spoon pan juices over, and serve.'],
     nut: { cal: 380, pro: 34, carb: 6, fat: 24 },
-    notes: 'Marinate longer if there’s time — 30 min is even better. Meyer lemons when in season.',
+    notes: 'Marinate longer if there’s time. 30 min is even better. Meyer lemons when in season.',
     comments: [{ author: 'Hannah', text: 'Doubled the garlic. No regrets.' }],
   },
   {
@@ -17,8 +17,8 @@ export const DEMO_MY_RECIPES = [
     ing: ['2 lb ground beef (90/10)', '1 onion, diced', '2 cans kidney beans, drained', '1 can crushed tomatoes (28 oz)', '3 tbsp chili powder', '1 tsp cumin', '2 cups beef broth'],
     dir: ['Brown the beef with the onion; drain.', 'Add everything to the crockpot and stir.', 'Cook on low 4 hours (or high 2½).', 'Taste, season, and top as you like.'],
     nut: { cal: 410, pro: 31, carb: 28, fat: 19 },
-    notes: 'Use 90/10 beef — leaner gets dry. Freezes great in quart bags.',
-    comments: [{ author: 'Betsy', text: 'Made it for the game — added a chipotle pepper!' }],
+    notes: 'Use 90/10 beef. Leaner gets dry. Freezes great in quart bags.',
+    comments: [{ author: 'Betsy', text: 'Made it for the game and added a chipotle pepper!' }],
   },
   {
     title: 'Overnight Oats', prep: 5, cook: 0, servings: 1, rating: 3,

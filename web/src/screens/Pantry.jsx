@@ -53,7 +53,7 @@ function Row({ item, inv, qty, out, editing, editDraft, setEditDraft, onStartEdi
         <button
           onClick={onToggleOut}
           aria-pressed={!out}
-          aria-label={out ? `${item.name} — out` : `${item.name} — in stock`}
+          aria-label={out ? `${item.name}, out` : `${item.name}, in stock`}
           style={{ flex: '0 0 auto', display: 'flex', border: 'none', background: 'none', cursor: 'pointer', padding: 7, margin: -7 }}
         >
           <Check on={!out} />
@@ -72,7 +72,7 @@ function Row({ item, inv, qty, out, editing, editDraft, setEditDraft, onStartEdi
 
       {/* The steppers are here whether or not you're taking inventory: using
           one jar of something is far more common than a walk down the shelves.
-          Day to day they stop at one — an item you're out of goes with ×. */}
+          Day to day they stop at one; an item you're out of goes with ×. */}
       <div style={{ flex: '0 0 auto', display: 'flex', alignItems: 'center', gap: 8 }}>
         <button
           style={{ ...STEP_BTN, opacity: !inv && qty <= 1 ? 0.4 : 1 }}
@@ -105,13 +105,13 @@ function Row({ item, inv, qty, out, editing, editDraft, setEditDraft, onStartEdi
 
 /**
  * What's already in the kitchen, in three cards: pantry, fridge, freezer. Any
- * of them folds away — most kitchens have one shelf that's twice the size of
- * the other two.
+ * of them folds away, since most kitchens have one shelf that's twice the size
+ * of the other two.
  *
  * Two modes. Day to day you add, rename, count up and down, and remove single
  * items. "Take inventory" is the walk down the shelves: untick the box beside
- * anything that's gone — only the box, and the count stays put, so a mis-tap
- * costs nothing — and everything still unticked when you save is removed. You
+ * anything that's gone (only the box, and the count stays put, so a mis-tap
+ * costs nothing) and everything still unticked when you save is removed. You
  * can add during that walk too, since half of taking stock is finding things
  * you never wrote down.
  */
@@ -181,7 +181,7 @@ export default function Pantry({ items, onAdd, onRename, onRemove, onSetQty, onS
     <div className="screen">
       <div className="top-row">
         <div className="h1">Pantry</div>
-        {/* Available on an empty pantry too — taking stock of a bare shelf is
+        {/* Available on an empty pantry too, since taking stock of a bare shelf is
             how you fill it, now that the walk can add as well as subtract */}
         {(!inv || items.length > 0) && (
           <button

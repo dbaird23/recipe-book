@@ -4,7 +4,7 @@ const SESSION_DAYS = 90;
 const JWKS_URL = 'https://www.googleapis.com/oauth2/v3/certs';
 const GOOGLE_ISSUERS = ['accounts.google.com', 'https://accounts.google.com'];
 
-// ---------- Google ID token verification (Web Crypto — no Node deps) ----------
+// ---------- Google ID token verification (Web Crypto, no Node deps) ----------
 
 let jwksCache = { keys: null, expires: 0 };
 
@@ -36,7 +36,7 @@ export async function verifyGoogleCredential(credential, clientId) {
   if (header.alg !== 'RS256') throw new HttpError(401, 'Unsupported token algorithm');
 
   const jwk = (await getJwks()).find((k) => k.kid === header.kid);
-  if (!jwk) throw new HttpError(401, 'Unknown signing key — try signing in again');
+  if (!jwk) throw new HttpError(401, 'Unknown signing key. Try signing in again');
 
   const key = await crypto.subtle.importKey(
     'jwk',
@@ -57,7 +57,7 @@ export async function verifyGoogleCredential(credential, clientId) {
   const now = Math.floor(Date.now() / 1000);
   if (!GOOGLE_ISSUERS.includes(p.iss)) throw new HttpError(401, 'Unexpected token issuer');
   if (p.aud !== clientId) throw new HttpError(401, 'Token was issued for another app');
-  if (typeof p.exp !== 'number' || p.exp < now) throw new HttpError(401, 'Sign-in expired — try again');
+  if (typeof p.exp !== 'number' || p.exp < now) throw new HttpError(401, 'Sign-in expired. Try again');
   if (!p.email) throw new HttpError(401, 'Google did not share an email address');
   if (p.email_verified === false) throw new HttpError(403, 'Verify your Google email address first');
 

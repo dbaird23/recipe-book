@@ -66,8 +66,8 @@ function imageEntries(v) {
   return [];
 }
 
-// Recipe sites publish the SAME picture at several crops — photo.jpg,
-// photo-500x500.jpg, photo-480x270.jpg — so a naive read imports one image
+// Recipe sites publish the SAME picture at several crops (photo.jpg,
+// photo-500x500.jpg, photo-480x270.jpg) so a naive read imports one image
 // five times. Collapse variants to their base and keep the largest of each.
 function imageKey(url) {
   try {
@@ -83,7 +83,7 @@ function imageKey(url) {
 }
 
 // Collapse a run of candidate images to one entry per picture, keeping the
-// largest crop of each and the order they were offered in — the recipe's own
+// largest crop of each and the order they were offered in: the recipe's own
 // photos first, then whatever else the page had.
 function bestImages(entries, max) {
   const best = new Map();
@@ -106,7 +106,7 @@ function bestImages(entries, max) {
 // two things a cook actually wants live only in the markup: the notes under
 // the recipe ("make ahead", "freezing", the substitution that saves the dish)
 // and the step photos through the post. Both are read straight out of the HTML
-// with the same forgiving spirit as the rest of the importer — when a site
+// with the same forgiving spirit as the rest of the importer. When a site
 // lays them out in a way we don't recognise, we come back empty rather than
 // wrong, and the member can paste or upload the rest.
 
@@ -160,14 +160,14 @@ function splitNotes(inner) {
     // Long enough for the "freezing and reheating" essay some sites write,
     // short enough that a mis-matched block can't paste half a page in
     .map((part) => decodeEntities(part).slice(0, 1500))
-    // The heading itself sits inside some of these blocks — it isn't a note
+    // The heading itself sits inside some of these blocks, and it isn't a note
     .filter((t) => t && !/^notes?:?$/i.test(t));
 }
 
 function notesFrom(html) {
   for (const re of NOTE_BLOCKS) {
     for (const m of html.matchAll(re)) {
-      // "2 Tbsp butter (room temperature)" — a plugin's aside on one
+      // "2 Tbsp butter (room temperature)" is a plugin's aside on one
       // ingredient line, not the notes under the recipe
       if (/ingredient/i.test(m[0])) continue;
       const notes = splitNotes(elementAt(html, m.index));
@@ -180,13 +180,13 @@ function notesFrom(html) {
 // Images that are furniture rather than food: the author's headshot, the site
 // logo, share buttons, ad creative. Cheaper to name them than to guess.
 // A "-PIN2-" file is the tall Pinterest graphic with the title printed across
-// it — a picture of the recipe, but not one you want in the gallery.
+// it: a picture of the recipe, but not one you want in the gallery.
 const NOT_A_PHOTO =
   /avatar|gravatar|logo|headshot|icon|badge|banner|button|sprite|pixel|emoji|spacer|placeholder|author|byline|pinit|social|advert|[-_]pin\d*[-_.]|\bads?[-_]/i;
 
 /**
- * The photos through the post — process shots, the finished plate from another
- * angle — from inside the article, so the sidebar and footer don't come along.
+ * The photos through the post (process shots, the finished plate from another
+ * angle) read from inside the article, so the sidebar and footer don't come along.
  * Lazy-loading rewrites `src` to a placeholder and keeps the real file in
  * `data-src`, which is read first for that reason.
  */
@@ -258,7 +258,7 @@ export async function importFromUrl(rawUrl) {
     console.error(`import failed for ${url.hostname}:`, e?.message || e);
     throw new HttpError(
       502,
-      `Couldn’t read ${url.hostname} — the site blocked us. Try “paste the text” instead.`
+      `Couldn’t read ${url.hostname}. The site blocked us. Try “paste the text” instead.`
     );
   }
 
@@ -284,7 +284,7 @@ export async function importFromUrl(rawUrl) {
     title: textOf(recipe.name) || 'Imported Recipe',
     prep: String(prep || ''),
     cook: String(cook || ''),
-    // "about 35 meatballs" is a yield, not a serving count — the serving size
+    // "about 35 meatballs" is a yield, not a serving count; the serving size
     // is what turns it into one
     serv: String(servingsOf([].concat(recipe.recipeYield ?? []).map(textOf), textOf(nutrition.servingSize))),
     ing: (recipe.recipeIngredient || []).map(textOf).filter(Boolean).join('\n'),
@@ -301,7 +301,7 @@ export async function importFromUrl(rawUrl) {
           pro: gramsOf(nutrition.proteinContent),
           carb: gramsOf(nutrition.carbohydrateContent),
           fat: gramsOf(nutrition.fatContent),
-          // "5 meatballs with sauce" — what those numbers are actually per
+          // "5 meatballs with sauce": what those numbers are actually per
           serving: textOf(nutrition.servingSize),
         }
       : null,

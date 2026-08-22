@@ -1,4 +1,4 @@
-// Model Context Protocol server — the front door for AI assistants (Cursor,
+// Model Context Protocol server: the front door for AI assistants (Cursor,
 // Claude, anything that speaks MCP).
 //
 // Transport is Streamable HTTP at POST /mcp, run statelessly: no session id,
@@ -33,7 +33,7 @@ const RECIPE_PROPS = {
   cook: { ...minutes, description: 'Cook time in minutes' },
   servings: { type: 'integer', minimum: 1 },
   notes: { type: 'string' },
-  source: { type: 'string', description: 'Where it came from — a URL, a site name, or a cookbook' },
+  source: { type: 'string', description: 'Where it came from: a URL, a site name, or a cookbook' },
   rating: { type: 'integer', minimum: 0, maximum: 5, description: 'Your own 1–5 star rating; 0 clears it' },
 };
 
@@ -73,7 +73,7 @@ const itemOf = (m) => {
   if (!m) return undefined;
   if (m.type === 'recipe') {
     // The plan keeps the entry but drops the link when a recipe is deleted or
-    // its owner is unfriended — say so rather than reporting an empty meal.
+    // its owner is unfriended, so say so rather than reporting an empty meal.
     if (!m.recipe) return { type: 'recipe', unavailable: 'That recipe is no longer in your book' };
     return { type: 'recipe', recipeId: m.recipe.id, title: m.recipe.title, owner: m.recipe.ownerName, servings: m.recipe.servings };
   }
@@ -110,7 +110,7 @@ const PLAN_ENTRY = {
   properties: {
     type: { type: 'string', enum: ['recipe', 'leftovers', 'text'] },
     recipeId: { type: 'string', description: 'Required when type is "recipe"' },
-    text: { type: 'string', description: 'Required when type is "text" — e.g. "Takeout", "garlic bread"' },
+    text: { type: 'string', description: 'Required when type is "text", e.g. "Takeout", "garlic bread"' },
   },
   required: ['type'],
 };
@@ -158,12 +158,12 @@ const TOOLS = [
     name: 'list_recipes',
     title: 'List recipes',
     description:
-      'List recipes in the book — your own, the ones your friends have shared, or both. Returns summaries; call get_recipe for ingredients and directions.',
+      'List recipes in the book: your own, the ones your friends have shared, or both. Returns summaries; call get_recipe for ingredients and directions.',
     inputSchema: {
       type: 'object',
       properties: {
         scope: { type: 'string', enum: ['mine', 'friends', 'all'], description: 'Whose recipes to list. Defaults to "all".' },
-        query: { type: 'string', description: 'Optional filter — matches title, tags and ingredients' },
+        query: { type: 'string', description: 'Optional filter that matches title, tags and ingredients' },
       },
     },
     run: async (call, args) => {
@@ -212,7 +212,7 @@ const TOOLS = [
     name: 'update_recipe',
     title: 'Edit a recipe',
     description:
-      'Change a recipe you own. Send only the fields you want to change — everything else is left as it is. Cannot edit a friend’s recipe.',
+      'Change a recipe you own. Send only the fields you want to change; everything else is left as it is. Cannot edit a friend’s recipe.',
     inputSchema: {
       type: 'object',
       properties: { recipeId: { type: 'string' }, ...RECIPE_PROPS },
@@ -257,7 +257,7 @@ const TOOLS = [
     name: 'get_meal_plan',
     title: 'Read the meal plan',
     description:
-      'What is planned to eat across a date range — breakfast, lunch and dinner, one entry per planned day. Each meal is a list, since a meal can be several things (a recipe plus a side). Meals with nothing planned are left out, and days with nothing at all are simply absent.',
+      'What is planned to eat across a date range: breakfast, lunch and dinner, one entry per planned day. Each meal is a list, since a meal can be several things (a recipe plus a side). Meals with nothing planned are left out, and days with nothing at all are simply absent.',
     inputSchema: {
       type: 'object',
       properties: {
@@ -276,7 +276,7 @@ const TOOLS = [
     name: 'set_meal_plan_day',
     title: 'Plan a day',
     description:
-      'Set or clear any of breakfast, lunch and dinner on one day, and/or its note. A meal can be several things at once — pass a list, e.g. a meatball recipe plus "spaghetti" as text. Whatever you send replaces that meal entirely; omit a meal to leave it alone, or pass null to clear it. Recipes must already be in your book or a friend’s.',
+      'Set or clear any of breakfast, lunch and dinner on one day, and/or its note. A meal can be several things at once, so pass a list, e.g. a meatball recipe plus "spaghetti" as text. Whatever you send replaces that meal entirely; omit a meal to leave it alone, or pass null to clear it. Recipes must already be in your book or a friend’s.',
     inputSchema: {
       type: 'object',
       properties: {
@@ -286,7 +286,7 @@ const TOOLS = [
             meal,
             {
               type: ['array', 'object', 'null'],
-              description: `What is for ${meal} — one entry or a list of them, or null to clear it`,
+              description: `What is for ${meal}: one entry or a list of them, or null to clear it`,
               items: { $ref: '#/$defs/planEntry' },
               properties: PLAN_ENTRY.properties,
               required: PLAN_ENTRY.required,
@@ -311,7 +311,7 @@ const TOOLS = [
     name: 'get_pantry',
     title: 'Read the pantry',
     description:
-      'What is already in the kitchen — the pantry, the fridge and the freezer. The grocery list skips these, so read it before suggesting a shop.',
+      'What is already in the kitchen: the pantry, the fridge and the freezer. The grocery list skips these, so read it before suggesting a shop.',
     inputSchema: {
       type: 'object',
       properties: { location: { ...LOCATION, description: 'Only this shelf. Omit for everything.' } },
@@ -377,7 +377,7 @@ const TOOLS = [
   {
     name: 'remove_pantry_item',
     title: 'Take something out of the pantry',
-    description: 'Remove an item from the kitchen — you used it up, or it went off.',
+    description: 'Remove an item from the kitchen, because you used it up or it went off.',
     inputSchema: {
       type: 'object',
       properties: { itemId: { type: 'string' } },
@@ -393,7 +393,7 @@ const TOOLS = [
     name: 'add_grocery_item',
     title: 'Add to the grocery list',
     description:
-      'Put something on the grocery list by hand — anything the meal plan wouldn’t know about. It sits alongside the week’s ingredients until it is removed.',
+      'Put something on the grocery list by hand: anything the meal plan wouldn’t know about. It sits alongside the week’s ingredients until it is removed.',
     inputSchema: {
       type: 'object',
       properties: {
@@ -412,7 +412,7 @@ const TOOLS = [
     name: 'remove_grocery_item',
     title: 'Take something off the grocery list',
     description:
-      'Remove a hand-added grocery item. Ingredients that come from the meal plan cannot be removed this way — change the plan or the pantry instead.',
+      'Remove a hand-added grocery item. Ingredients that come from the meal plan cannot be removed this way; change the plan or the pantry instead.',
     inputSchema: {
       type: 'object',
       properties: { itemId: { type: 'string' } },
@@ -428,7 +428,7 @@ const TOOLS = [
     name: 'grocery_list',
     title: 'Build a grocery list',
     description:
-      'Everything to buy for a date range: the ingredients of every recipe planned in it — breakfast, lunch and dinner — minus anything already in the kitchen, plus whatever was added by hand. Each line carries the aisle it belongs to. Quantities are left exactly as the recipes write them — nothing is combined or converted.',
+      'Everything to buy for a date range: the ingredients of every recipe planned in it (breakfast, lunch and dinner) minus anything already in the kitchen, plus whatever was added by hand. Each line carries the aisle it belongs to. Quantities are left exactly as the recipes write them; nothing is combined or converted.',
     inputSchema: {
       type: 'object',
       properties: {
@@ -461,7 +461,7 @@ const TOOLS = [
           return { date, meal, recipeId: m.recipe.id, title: m.recipe.title, servings: m.recipe.servings, ingredients };
         });
       // Meals that are takeout, leftovers or a plain note have no ingredients
-      // but still belong in the answer — they're meals you don't shop for.
+      // but still belong in the answer, since they're meals you don't shop for.
       const noIngredients = planned
         .filter((x) => !x.m.recipe)
         .map(({ date, meal, m }) => ({ date, meal, planned: itemOf(m) }));
@@ -494,7 +494,7 @@ const fail = (id, code, message) => ({ jsonrpc: '2.0', id, error: { code, messag
 
 async function handleMessage(message, call) {
   const { id, method, params = {} } = message || {};
-  // A notification (no id) needs no reply — `initialized` is the common one
+  // A notification (no id) needs no reply; `initialized` is the common one
   if (id === undefined || id === null) return null;
 
   switch (method) {
@@ -527,7 +527,7 @@ async function handleMessage(message, call) {
         const data = await tool.run(call, params.arguments || {});
         return reply(id, { content: [{ type: 'text', text: JSON.stringify(data, null, 2) }] });
       } catch (err) {
-        // Tool failures are results, not protocol errors — the model should
+        // Tool failures are results, not protocol errors, because the model should
         // see what went wrong and get a chance to fix its arguments
         if (!(err instanceof HttpError)) console.error(err.stack || err);
         const text = err instanceof HttpError ? err.message : 'Something went wrong running that tool';
@@ -569,7 +569,7 @@ export async function handleMcp(request, { authed, call }) {
     const out = await handleMessage(message, call);
     if (out) replies.push(out);
   }
-  // Notifications only — nothing to say back
+  // Notifications only, so nothing to say back
   if (!replies.length) return new Response(null, { status: 202, headers: CORS });
   return json(batch ? replies : replies[0], { headers: CORS });
 }

@@ -27,8 +27,8 @@ const put = (p, h, o) => on('PUT', p, h, o);
 const del = (p, h, o) => on('DELETE', p, h, o);
 
 // Pass as the last argument to open a route to API keys. Keys are for reading
-// and writing recipes and the meal plan; account-level routes — invites,
-// deleting, avatars, minting more keys — stay cookie-only on purpose.
+// and writing recipes and the meal plan. Account-level routes (invites,
+// deleting, avatars, minting more keys) stay cookie-only on purpose.
 const KEY = { key: true };
 
 // ---------- helpers ----------
@@ -280,7 +280,7 @@ patch('/api/recipes/:id', async (ctx) => {
       .bind(JSON.stringify(nut), body.nutEdited === false ? 0 : 1, now, row.id)
       .run();
   } else if ('rating' in body && Object.keys(body).length === 1) {
-    // Only the owner rates their own recipe — loadOwnedRecipe already enforced that
+    // Only the owner rates their own recipe; loadOwnedRecipe already enforced that
     const rating = Math.round(+body.rating || 0);
     if (rating < 0 || rating > 5) throw new HttpError(400, 'Rating must be between 0 and 5 stars');
     await ctx.db.prepare('UPDATE recipes SET rating=?, updated_at=? WHERE id=?').bind(rating, now, row.id).run();
@@ -319,7 +319,7 @@ del('/api/recipes/:id', async (ctx) => {
   return json({ ok: true });
 });
 
-// Save a friend's recipe into my book — a clean copy: no tags, no comments,
+// Save a friend's recipe into my book as a clean copy: no tags, no comments,
 // credited to them, and independent of their later edits.
 post('/api/recipes/:id/save', async (ctx) => {
   const me = requireUser(ctx);
@@ -362,7 +362,7 @@ post('/api/recipes/:id/comments', async (ctx) => {
   return json({ recipe: await recipeJson(ctx.db, row) });
 });
 
-// You can delete your own comment, wherever it lives — including on a
+// You can delete your own comment, wherever it lives, including on a
 // friend's recipe. Nobody else's, not even the recipe owner's.
 del('/api/recipes/:id/comments/:commentId', async (ctx) => {
   const me = requireUser(ctx);
@@ -447,7 +447,7 @@ function requireDate(d) {
   return d;
 }
 
-/** Compact recipe shape for plan rows — enough to render a card and a grocery list. */
+/** Compact recipe shape for plan rows: enough to render a card and a grocery list. */
 async function planRecipe(ctx, recipeId, myId, friendIds) {
   if (!recipeId) return null;
   const r = await ctx.db
@@ -479,7 +479,7 @@ async function planRecipe(ctx, recipeId, myId, friendIds) {
 
 /**
  * A day as the app and the MCP tools read it: three meals and a note. Each
- * meal is a list, because dinner is often two things — the meatball recipe and
+ * meal is a list, because dinner is often two things: the meatball recipe and
  * the spaghetti you don't have a recipe for.
  */
 const emptyDay = (date) => ({ date, note: '', meals: { breakfast: [], lunch: [], dinner: [] } });
@@ -547,7 +547,7 @@ get('/api/plan', async (ctx) => {
 }, KEY);
 
 // Upsert one day. Send `breakfast`, `lunch` or `dinner` to say what that meal
-// is — one entry, a list of them, or null to clear it — and `note` to set or
+// is (one entry, a list of them, or null to clear it) and `note` to set or
 // clear the note; omit any of them to leave as is. A meal that is sent is
 // replaced wholesale, so removing one of its two dishes means sending the one
 // that stays.
@@ -850,14 +850,14 @@ export default {
         return;
       }
       const found = await userForToken(ctx.db, token);
-      if (!found) throw new HttpError(401, 'That API key isn’t valid — it may have been revoked');
+      if (!found) throw new HttpError(401, 'That API key isn’t valid. It may have been revoked');
       ctx.user = found.user;
       ctx.key = found.key;
       execCtx?.waitUntil(touchApiKey(ctx.db, found.key.id));
     };
 
     // MCP lives outside the REST router: it is one endpoint that multiplexes
-    // every tool over JSON-RPC, and it takes API keys only — never a cookie.
+    // every tool over JSON-RPC, and it takes API keys only, never a cookie.
     if (url.pathname === '/mcp') {
       try {
         if (request.method === 'POST') await authenticate();
@@ -880,7 +880,7 @@ export default {
       try {
         await authenticate();
         if (ctx.key && !route.key) {
-          throw new HttpError(403, 'API keys can only reach recipes and the meal plan — sign in for this one');
+          throw new HttpError(403, 'API keys can only reach recipes and the meal plan. Sign in for this one');
         }
         return await route.handler(ctx);
       } catch (err) {

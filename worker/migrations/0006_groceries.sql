@@ -1,4 +1,4 @@
--- Things added to the grocery list by hand — batteries, a birthday cake, the
+-- Things added to the grocery list by hand: batteries, a birthday cake, the
 -- milk nobody wrote a recipe for.
 --
 -- The rest of the list is derived: it's built fresh each time from the week's

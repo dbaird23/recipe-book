@@ -28,7 +28,7 @@ export function metaOf(r) {
 
 /**
  * Nutrition as it's stored: the four numbers, plus what one serving actually
- * is when the source says so — "5 meatballs with sauce" tells you far more
+ * is when the source says so: "5 meatballs with sauce" tells you far more
  * than "333 calories" on its own. Mirrors worker/src/util.js.
  */
 export function cleanNut(n) {
@@ -80,7 +80,7 @@ const NUT_FIELDS = [
 /** Pull calories/protein/carbs/fat out of a nutrition blob, in any order or layout. */
 function parseNutrition(text) {
   if (!text.trim()) return null;
-  // "Serving size: 5 meatballs with sauce" — what the numbers are per
+  // "Serving size: 5 meatballs with sauce": what the numbers are per
   const size = /serving size\s*[:\-–]?\s*([^\n]+)/i.exec(text);
   const out = size ? { serving: size[1].trim() } : {};
   let found = 0;
@@ -174,7 +174,7 @@ const singularish = (w) => (w.length > 3 && /[^s]s$/.test(w) ? w.slice(0, -1) : 
 
 /** "about 35 meatballs" → { count: 35, unit: 'meatball' }; "4" → { count: 4, unit: '' } */
 function countAndUnit(text) {
-  // A range is really its lower end — "6–8 servings" feeds 6
+  // A range is really its lower end, so "6–8 servings" feeds 6
   const t = String(text ?? '').replace(/(\d)\s*(?:-|–|—|\bto\b)\s*\d+/g, '$1');
   const m = /(\d+(?:\.\d+)?)\s*([A-Za-z]+)?/.exec(t);
   if (!m) return { count: 0, unit: '' };
@@ -184,8 +184,8 @@ function countAndUnit(text) {
 /**
  * How many servings a recipe makes, from what it says it yields.
  *
- * A yield is often a count of things rather than of meals — "about 35
- * meatballs" is not 35 dinners — so when the nutrition says what one serving
+ * A yield is often a count of things rather than of meals ("about 35
+ * meatballs" is not 35 dinners), so when the nutrition says what one serving
  * is in the same units ("5 meatballs with sauce"), the two are divided into
  * each other and this recipe correctly serves seven. Without that second
  * number there's nothing better to go on than the count itself, which is the
@@ -236,7 +236,7 @@ export const addDays = (date, n) => {
   return d;
 };
 
-/** Local YYYY-MM-DD — not toISOString(), which converts to UTC and can slip a day. */
+/** Local YYYY-MM-DD, not toISOString(), which converts to UTC and can slip a day. */
 export const isoDate = (d) =>
   `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
 
@@ -259,14 +259,14 @@ export const PANTRY_LOCATIONS = [
   { key: 'freezer', label: 'Freezer' },
 ];
 
-/** "2 heads", "1 bottle", "3" — the count as it reads on a shelf label. */
+/** "2 heads", "1 bottle", "3": the count as it reads on a shelf label. */
 export const qtyLabel = (qty, unit) => `${+(+qty).toFixed(2)}${unit ? ` ${unit}` : ''}`;
 
 /** How an item reads when you tap it to edit: "2 heads Garlic", or just "Parmesan". */
 export const pantryLine = (item) =>
   item.qty !== 1 || item.unit ? `${qtyLabel(item.qty, item.unit)} ${item.name}` : item.name;
 
-// Words the demo backend lifts out of "2 cans black beans" as the unit —
+// Words the demo backend lifts out of "2 cans black beans" as the unit;
 // anything else after the number is part of the name. The real backend parses
 // server-side; this copy exists so the static demo behaves the same.
 const PANTRY_UNITS = new Set([
@@ -276,8 +276,8 @@ const PANTRY_UNITS = new Set([
   'loaf', 'loaves', 'carton', 'cartons', 'container', 'containers', 'block', 'blocks',
 ]);
 
-// Dictation writes small numbers as words and leaves in the "of" nobody types
-// — "two cans of black beans". Both are straightened out before the line is
+// Dictation writes small numbers as words and leaves in the "of" nobody types,
+// as in "two cans of black beans". Both are straightened out before the line is
 // read apart, so a dictated shelf reads the same as a typed one.
 const NUMBER_WORDS = {
   a: 1, an: 1, one: 1, two: 2, three: 3, four: 4, five: 5, six: 6, seven: 7, eight: 8,
@@ -290,13 +290,13 @@ export function normalizeSpoken(text) {
   const lead = v.match(/^([A-Za-z]+)\b\s*/);
   const n = lead && NUMBER_WORDS[lead[1].toLowerCase()];
   const withQty = n ? `${n} ${v.slice(lead[0].length)}` : v;
-  // Only after a unit — "1 bag of rice" is a bag of rice, "Bag of Holding" isn't
+  // Only after a unit: "1 bag of rice" is a bag of rice, "Bag of Holding" isn't
   return withQty.replace(/^(\d+(?:\.\d+)?\s+[A-Za-z]+)\s+of\s+/i, '$1 ');
 }
 
 /**
  * Split a run of items into lines: what dictation hands over is one long
- * sentence — "two cans of black beans, rice and three onions". Splitting on
+ * sentence: "two cans of black beans, rice and three onions". Splitting on
  * "and" occasionally cuts an item in half ("bread and butter pickles"), which
  * is why every item stays editable and removable afterwards.
  */
@@ -308,7 +308,7 @@ export const splitPantryEntries = (text) =>
 
 /** "2 cans black beans" → 2 × "black beans" in cans. Mirrors worker/src/util.js. */
 // The count doesn't always come first: plenty of people write the thing they
-// have and then how much of it — "spaghetti 2 bags", "eggs 12". Only read as a
+// have and then how much of it: "spaghetti 2 bags", "eggs 12". Only read as a
 // count when the line ends there, so "9x13 pan" and "chili powder" are safe.
 const TRAILING_QTY = /^(.*[A-Za-z].*?)\s+(\d+(?:\.\d+)?)\s*([A-Za-z]+)?$/;
 
@@ -321,7 +321,7 @@ export function parsePantryEntry(text) {
     return { name: (m[2] ? `${m[2]} ` : '') + m[3].trim(), qty: parseFloat(m[1]), unit: '', hadQty: true };
   }
   const t = v.match(TRAILING_QTY);
-  // A word after the trailing number has to be a unit — otherwise it's part of
+  // A word after the trailing number has to be a unit; otherwise it's part of
   // the name ("Route 66 sauce"), and the line is just an item with no count.
   if (t && (!t[3] || PANTRY_UNITS.has(t[3].toLowerCase()))) {
     return { name: t[1].trim(), qty: parseFloat(t[2]), unit: (t[3] || '').toLowerCase(), hadQty: true };
@@ -334,7 +334,7 @@ export function parsePantryEntry(text) {
  * covers "2 cans kidney beans, drained". Deliberately loose and blind to a
  * trailing plural: a wrong skip costs one trip down an aisle, and the grocery
  * sheet lists every skip back to you. Names under three characters never
- * match — too many false hits. The Worker keeps the same rule for the MCP
+ * match, since too many false hits follow. The Worker keeps the same rule for the MCP
  * grocery list, in worker/src/util.js.
  */
 export function pantrySkip(text, items) {
@@ -416,7 +416,7 @@ export const GROCERY_SECTIONS = [
   { key: 'other', label: 'Other' },
 ];
 
-// First match wins, so the exceptions sit above the general rules — "chicken
+// First match wins, so the exceptions sit above the general rules: "chicken
 // broth" is a pantry shelf, not the meat counter, and "dried dill" is a spice
 // jar rather than a bunch of herbs. Like pantrySkip this is deliberately loose:
 // a mis-filed line costs you a few steps in the shop, and anything it doesn't
@@ -470,7 +470,7 @@ export function splitIngredient(line) {
 }
 
 // Everything a cook writes about *what to do* with an ingredient rather than
-// what to buy — dropped so two recipes' wording lands on one line.
+// what to buy, dropped so two recipes' wording lands on one line.
 const PREP_WORDS =
   /\b(?:fresh|freshly|large|small|medium|ripe|finely|coarsely|roughly|thinly|chopped|minced|diced|sliced|shredded|grated|crushed|drained|rinsed|packed|softened|melted|beaten|divided|optional|halved|quartered|cubed|trimmed|peeled)\b/g;
 
@@ -504,7 +504,7 @@ const capitalize = (s) => (s ? s[0].toUpperCase() + s.slice(1) : s);
  * The week's shopping, laid out the way a shop is: by aisle rather than by
  * day, with an ingredient that several meals need collapsed onto one line
  * that remembers which recipes wanted it. Anything the pantry already covers
- * is dropped, and every drop is handed back in `skipped` — a loose name match
+ * is dropped, and every drop is handed back in `skipped`, since a loose name match
  * will occasionally lose something you did need. `hidden` is the lines struck
  * off by hand this week: the recipe still calls for them, this shop doesn't.
  */
@@ -517,7 +517,7 @@ export function buildGroceryList({ entries, weekOffset, pantry = [], manual = []
     const date = isoDate(addDays(mondayOf(weekOffset), i));
     const entry = entries.find((e) => e.date === date);
     if (!entry) return;
-    // A meal can be several things — take the ingredients of every one of them
+    // A meal can be several things, so take the ingredients of every one of them
     for (const slot of MEAL_SLOTS) {
       for (const { recipe } of entry.meals?.[slot.key] || []) {
         if (!recipe) continue;

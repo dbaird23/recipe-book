@@ -49,7 +49,7 @@ export default function SignIn({ config, invite, inviteToken, onSignedIn, onErro
 
   return (
     <div className="screen" style={{ alignItems: 'center', justifyContent: 'center', padding: 32, textAlign: 'center' }}>
-      {/* The app icon itself, not a monogram standing in for it — it's the
+      {/* The app icon itself, not a monogram standing in for it. It's the
           mark on the home screen, so it should be the one on the way in.
           BASE_URL because the demo build is served from a subpath. Decorative:
           the name is spelled out directly underneath. */}
@@ -62,7 +62,7 @@ export default function SignIn({ config, invite, inviteToken, onSignedIn, onErro
       />
       <div style={{ fontSize: 28, fontWeight: 700, letterSpacing: -0.5 }}>Recipe Book</div>
       <div style={{ fontSize: 15, color: 'var(--muted)', marginTop: 10, maxWidth: 250, lineHeight: 1.5 }}>
-        Your private recipe book. No feeds, no strangers — just your recipes and your friends&rsquo;.
+        Your private recipe book. No feeds, no strangers, just your recipes and your friends&rsquo;.
       </div>
 
       {config.demo && (
@@ -107,7 +107,7 @@ export default function SignIn({ config, invite, inviteToken, onSignedIn, onErro
             {busy ? 'Signing in…' : 'Continue'}
           </button>
           <div style={{ fontSize: 11.5, color: 'var(--faint)', lineHeight: 1.4 }}>
-            Dev mode — no password. Add a Google client ID in .env for real sign-in.
+            Dev mode: no password. Add a Google client ID in .env for real sign-in.
           </div>
         </form>
       )}

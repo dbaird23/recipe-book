@@ -15,7 +15,7 @@ const CLEAR_BTN = {
 };
 
 /**
- * One thing on a meal — a recipe, leftovers, or a line you typed. A recipe
+ * One thing on a meal: a recipe, leftovers, or a line you typed. A recipe
  * opens that recipe; anything else reopens the picker, so changing your mind
  * is one tap either way. The × takes just this one off.
  */

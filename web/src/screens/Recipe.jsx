@@ -242,7 +242,7 @@ export default function Recipe({
               className="textarea"
               style={{ border: 'none', background: 'none', padding: 0, resize: 'vertical', lineHeight: 1.55 }}
               rows={4}
-              placeholder={'One note per line —\nmake ahead, brand swaps, what to try next time…'}
+              placeholder={'One note per line:\nmake ahead, brand swaps, what to try next time…'}
               value={notesDraft}
               onChange={(e) => setNotesDraft(e.target.value)}
               autoFocus
@@ -263,8 +263,8 @@ export default function Recipe({
             style={{ padding: '13px 14px', cursor: isMine ? 'pointer' : 'default' }}
             onClick={() => { if (isMine) { setNotesDraft(recipe.notes); setNotesEditOpen(true); } }}
           >
-            {/* Numbered like the directions: notes come in a list — make ahead,
-                freezing, the swap that saves it — and a number is how you say
+            {/* Numbered like the directions: notes come in a list (make ahead,
+                freezing, the swap that saves it) and a number is how you say
                 "the second one" to whoever else is in the kitchen. */}
             <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
               {notes.map((txt, i) => (
@@ -294,7 +294,7 @@ export default function Recipe({
             }}
             onClick={() => { setNotesDraft(''); setNotesEditOpen(true); }}
           >
-            + Add a note — tweaks, brand swaps, ideas for next time. One per line.
+            + Add a note: tweaks, brand swaps, ideas for next time. One per line.
           </button>
         ) : (
           <div style={{ fontSize: 13, color: 'var(--faint)' }}>No notes on this one.</div>
@@ -411,7 +411,7 @@ export default function Recipe({
             className="textarea"
             style={{ border: 'none', background: 'none', padding: 0, resize: 'none' }}
             rows={2}
-            placeholder="Add a comment — did you make it? change anything?"
+            placeholder="Add a comment. Did you make it? Change anything?"
             value={commentText}
             onChange={(e) => setCommentText(e.target.value)}
           />

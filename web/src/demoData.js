@@ -12,6 +12,26 @@ export const DEMO_MY_RECIPES = [
     comments: [{ author: 'Hannah', text: 'Doubled the garlic. No regrets.' }],
   },
   {
+    title: 'Mom’s Meatballs', prep: 25, cook: 45, servings: 7, rating: 5,
+    tags: ['Dinner', 'Beef'],
+    // Two lists in one recipe: a line ending in a colon names the part under it
+    ing: [
+      'For the meatballs:', '1 lb ground beef (85/15)', '½ lb ground pork', '1 cup breadcrumbs',
+      '½ cup parmesan, grated', '2 eggs', '3 cloves garlic, minced', '¼ cup parsley, chopped',
+      'For the sauce:', '2 cans crushed tomatoes (28 oz each)', '1 onion, diced', '3 tbsp olive oil',
+      '1 tsp dried oregano', 'Pinch of red pepper flakes',
+    ],
+    dir: [
+      'Mix the meatball ingredients by hand; don’t overwork it.',
+      'Roll into 35 balls and brown in batches; set aside.',
+      'Soften the onion in the oil, add tomatoes, oregano and pepper flakes.',
+      'Return the meatballs, cover, and simmer 30 minutes.',
+    ],
+    nut: { cal: 430, pro: 32, carb: 21, fat: 24, serving: '5 meatballs with sauce' },
+    notes: 'Freeze half the batch raw on a sheet pan, then bag them.',
+    comments: [{ author: 'Emily', text: 'The sauce alone is worth it.' }],
+  },
+  {
     title: 'Sunday Beef Chili', prep: 20, cook: 240, servings: 8, rating: 5,
     tags: ['Dinner', 'Beef', 'Crockpot'],
     ing: ['2 lb ground beef (90/10)', '1 onion, diced', '2 cans kidney beans, drained', '1 can crushed tomatoes (28 oz)', '3 tbsp chili powder', '1 tsp cumin', '2 cups beef broth'],

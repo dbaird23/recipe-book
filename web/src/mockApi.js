@@ -1,7 +1,7 @@
 // In-browser API for the static demo build (GitHub Pages). Same interface as
 // the real api client, backed by localStorage. Single-player, no server.
 import { DEMO_MY_RECIPES, DEMO_FRIENDS, DEMO_PANTRY } from './demoData.js';
-import { autoNut, cleanNut, parsePantryEntry, grocerySection, GROCERY_SECTIONS, MEAL_SLOTS } from './util.js';
+import { autoNut, countIngredients, cleanNut, parsePantryEntry, grocerySection, GROCERY_SECTIONS, MEAL_SLOTS } from './util.js';
 
 const KEY = 'recipe-book-demo-v1';
 const uid = () => (crypto.randomUUID ? crypto.randomUUID() : String(Math.random()).slice(2));
@@ -30,7 +30,7 @@ function mkRecipe(src, ownerId, ownerName, authorsByName) {
     notes: src.notes || '',
     source: src.source || null,
     from: src.from || null,
-    nut: src.nut ? cleanNut(src.nut) : autoNut((src.ing || []).length),
+    nut: src.nut ? cleanNut(src.nut) : autoNut(countIngredients(src.ing || [])),
     // Nutrition supplied by an import or paste is real data, not an estimate
     nutEdited: !!src.nut,
     rating: src.rating || 0,
@@ -223,7 +223,7 @@ export const mockApi = {
         source: body.source ?? r.source,
         from: 'from' in body ? body.from || null : r.from,
       });
-      if (!r.nutEdited) r.nut = autoNut(r.ing.length);
+      if (!r.nutEdited) r.nut = autoNut(countIngredients(r.ing));
     }
     save();
     return { recipe: r };

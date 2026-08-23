@@ -37,6 +37,24 @@ export function autoNut(ingCount) {
   return { cal: 160 + n * 38, pro: 4 + n * 4, carb: 10 + n * 5, fat: 4 + n * 3 };
 }
 
+/**
+ * A recipe is often two shopping lists in a trenchcoat: the meatballs and the
+ * sauce they sit in. Rather than a second field nobody would fill in, a
+ * section is a line in the ingredients that names the part below it, written
+ * the way cookbooks have always written it: "For the meatballs:".
+ *
+ * A heading is a short line ending in a colon that doesn't lead with a
+ * quantity, which leaves real ingredients alone: "2 tbsp soy sauce" leads
+ * with a number, and "Sauce: 2 tbsp soy sauce" doesn't end with the colon.
+ * Mirrored in web/src/util.js, which lays the sections out on the recipe page.
+ */
+const ING_HEADING = /^(?![\d\u00bc-\u00be\u2150-\u215e])[^\n]{1,60}:$/;
+
+export const isIngredientHeading = (line) => ING_HEADING.test(String(line ?? '').trim());
+
+/** How many lines are things to buy, rather than headings over them. */
+export const countIngredients = (lines) => lines.filter((l) => !isIngredientHeading(l)).length;
+
 export function sanitizeRecipeInput(body) {
   const clean = (v) => String(v ?? '').trim();
   const list = (v) => (Array.isArray(v) ? v.map(clean).filter(Boolean) : []);

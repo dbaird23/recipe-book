@@ -11,7 +11,7 @@ import { importFromUrl } from './importer.js';
 import { bearerToken, userForToken, touchApiKey, listApiKeys, createApiKey, revokeApiKey } from './apikeys.js';
 import { handleMcp } from './mcp.js';
 import {
-  HttpError, uid, nowIso, pairKey, json, autoNut, cleanNut, sanitizeRecipeInput, putImage, photoUrl,
+  HttpError, uid, nowIso, pairKey, json, autoNut, countIngredients, cleanNut, sanitizeRecipeInput, putImage, photoUrl,
   PANTRY_LOCATIONS, parsePantryEntry, GROCERY_SECTIONS, grocerySection, MEALS,
 } from './util.js';
 
@@ -240,7 +240,7 @@ post('/api/recipes', async (ctx) => {
   if (!r.title) throw new HttpError(400, 'Give it a title');
   const id = uid();
   const now = nowIso();
-  const nut = r.nut || autoNut(r.ing.length);
+  const nut = r.nut || autoNut(countIngredients(r.ing));
   const stmts = [
     ctx.db
       .prepare(
@@ -289,7 +289,7 @@ patch('/api/recipes/:id', async (ctx) => {
   } else {
     const r = sanitizeRecipeInput(body);
     if (!r.title) throw new HttpError(400, 'Give it a title');
-    const keepNut = row.nut_edited ? JSON.parse(row.nut) : autoNut(r.ing.length);
+    const keepNut = row.nut_edited ? JSON.parse(row.nut) : autoNut(countIngredients(r.ing));
     // "Saved from …" credit: updatable (and removable) when the edit sends a `from` key
     const fromName = 'from' in body ? String(body.from || '').trim() || null : row.from_name;
     await ctx.db

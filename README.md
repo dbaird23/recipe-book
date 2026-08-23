@@ -21,6 +21,10 @@ that runs entirely in your browser with sample data (single-player; changes stay
   nutrition per serving (saying what a serving actually is, "5 meatballs with sauce", when the recipe
   does), comments with photos, and a **1×–4× servings multiplier** that rescales ingredient quantities
   in place
+- **Ingredients in sections**: a recipe made of parts (the meatballs, and the sauce they sit in) says
+  so with a line ending in a colon: "For the meatballs:". Everything under it becomes that section on
+  the recipe page. The headings are labels, not shopping: they never reach the grocery list and never
+  count toward the nutrition estimate
 - **Pantry**: what you already keep in the pantry, fridge and freezer, typed *or dictated* the way
   you'd say it: "two cans of black beans, a bag of rice and three onions" lands as three items, spoken
   numbers and all, and the count can come after the thing too ("spaghetti 2 bags"). Counts step up and
@@ -155,6 +159,9 @@ npm run seed
 The first account to sign in becomes the group admin. Everyone else needs an invite link
 (Friends → + Invite).
 
+To run the front end on its own against the sample data (the same build that's on GitHub Pages: no
+Worker, no database, no sign-in), use `npm run demo -w web` and open http://localhost:5175.
+
 ## Deploy
 
 Everything below fits in Cloudflare's **free tier** (100k requests/day, 5 GB D1, 10 GB R2), with no card
@@ -204,6 +211,13 @@ work from inside `worker/`. The npm scripts above run from anywhere in the repo.
 - **List/grid view** is a per-device preference in the profile sheet (it was a canvas knob in the
   prototype).
 - Recipes can be **deleted** from the edit screen (not in the prototype, but necessary in a real app).
+- **Ingredient sections** are a convention inside the ingredients rather than a second field: a short
+  line that ends in a colon and doesn't lead with a quantity is a heading. That leaves ordinary lines
+  alone ("2 tbsp soy sauce" leads with a number, "Sauce: 2 tbsp soy sauce" doesn't end with the
+  colon), it survives a paste or an import unchanged, and a recipe written without headings looks
+  exactly as it always did. `web/src/util.js` and `worker/src/util.js` keep the same rule.
+- **Saving an edit** happens from a bar pinned to the bottom of the add/edit screen, since a recipe
+  written in sections is a long enough form that the button would otherwise be a scroll away.
 - **Servings** are worked out from what the recipe says it yields. A yield is often a count of things
   rather than of meals ("about 35 meatballs" is not 35 dinners), so when the nutrition says what one
   serving is in the same units ("5 meatballs with sauce"), the two are divided into each other and

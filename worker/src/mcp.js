@@ -8,7 +8,10 @@
 // The tools don't touch the database. Each one calls the same route handlers
 // the web app uses, so permissions, validation and shapes can never drift
 // between the two.
-import { HttpError, json, PANTRY_LOCATIONS, pantrySkip, GROCERY_SECTIONS, grocerySection, MEALS } from './util.js';
+import {
+  HttpError, json, PANTRY_LOCATIONS, pantrySkip, GROCERY_SECTIONS, grocerySection, MEALS,
+  isIngredientHeading, countIngredients,
+} from './util.js';
 
 const PROTOCOL_VERSION = '2025-06-18';
 const SERVER_INFO = { name: 'recipe-book', title: 'Recipe Book', version: '1.0.0' };
@@ -26,7 +29,12 @@ const minutes = { type: 'integer', minimum: 0 };
 
 const RECIPE_PROPS = {
   title: { type: 'string', description: 'What the recipe is called' },
-  ing: { type: 'array', items: { type: 'string' }, description: 'Ingredients, one line each, e.g. "2 cups flour"' },
+  ing: {
+    type: 'array',
+    items: { type: 'string' },
+    description:
+      'Ingredients, one line each, e.g. "2 cups flour". A recipe made of parts can be split into sections with a line that ends in a colon, e.g. "For the meatballs:", which names every line under it until the next such heading.',
+  },
   dir: { type: 'array', items: { type: 'string' }, description: 'Directions, one step per entry' },
   tags: { type: 'array', items: { type: 'string' }, description: 'Free-form labels, e.g. "Dinner", "Vegetarian"' },
   prep: { ...minutes, description: 'Prep time in minutes' },
@@ -48,7 +56,7 @@ const summary = (r) => ({
   cookMinutes: r.cook,
   servings: r.servings,
   rating: r.rating || undefined,
-  ingredientCount: r.ing.length,
+  ingredientCount: countIngredients(r.ing),
 });
 
 const detail = (r) => ({
@@ -452,6 +460,8 @@ const TOOLS = [
         .filter((x) => x.m.recipe)
         .map(({ date, meal, m }) => {
           const ingredients = m.recipe.ing
+            // A section heading ("For the sauce:") names the lines under it
+            .filter((line) => !isIngredientHeading(line))
             .filter((line) => {
               const have = pantrySkip(line, pantry);
               if (have) skipped.set(line, have.location);

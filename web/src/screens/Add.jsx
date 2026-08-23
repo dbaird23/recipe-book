@@ -174,7 +174,19 @@ export function AddStep2({ draft: initial, editing, knownTags = [], onBack, onSa
         </div>
         <div>
           <div className="section-label" style={{ marginBottom: 6 }}>Ingredients · one per line</div>
-          <textarea className="textarea" rows={6} placeholder={'2 lb chicken thighs\n4 cloves garlic…'} value={d.ing} onChange={set('ing')} />
+          <textarea
+            className="textarea"
+            rows={6}
+            placeholder={'2 lb chicken thighs\n4 cloves garlic…\n\nFor the sauce:\n28 oz crushed tomatoes'}
+            value={d.ing}
+            onChange={set('ing')}
+          />
+          {/* Meatballs and the sauce they sit in are two lists, not one. A line
+              ending in a colon says so, and it's how recipes already write it. */}
+          <div style={{ fontSize: 12, color: 'var(--faint)', marginTop: 6, lineHeight: 1.4 }}>
+            Made of parts? End a line with a colon &mdash; <strong>For the sauce:</strong> &mdash; and everything under it
+            becomes that section.
+          </div>
         </div>
         <div>
           <div className="section-label" style={{ marginBottom: 6 }}>Directions · one step per line</div>
@@ -264,9 +276,6 @@ export function AddStep2({ draft: initial, editing, knownTags = [], onBack, onSa
             onChange={(e) => { setFiles([...files, ...Array.from(e.target.files)]); e.target.value = ''; }}
           />
         </div>
-        <button className="btn-primary" style={{ padding: 15, fontSize: 15.5, marginTop: 4 }} onClick={save} disabled={busy}>
-          {busy ? 'Saving…' : 'Save recipe'}
-        </button>
         {editing && (
           <button
             className="btn-ghost"
@@ -276,6 +285,14 @@ export function AddStep2({ draft: initial, editing, knownTags = [], onBack, onSa
             Delete recipe
           </button>
         )}
+      </div>
+      {/* Saving stays where your thumb is. A recipe with two sets of
+          ingredients is a long form, and the button was a scroll away from
+          wherever you were typing. */}
+      <div className="save-bar">
+        <button className="btn-primary" style={{ padding: 15, fontSize: 15.5 }} onClick={save} disabled={busy}>
+          {busy ? 'Saving…' : 'Save recipe'}
+        </button>
       </div>
     </div>
   );

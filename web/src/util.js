@@ -47,6 +47,48 @@ export function autoNut(ingCount) {
   return { cal: 160 + n * 38, pro: 4 + n * 4, carb: 10 + n * 5, fat: 4 + n * 3 };
 }
 
+// --- ingredient sections ---
+
+/**
+ * A recipe is often two shopping lists in a trenchcoat: the meatballs and the
+ * sauce they sit in. Rather than a second field nobody would fill in, a
+ * section is a line in the ingredients that names the part below it, written
+ * the way cookbooks have always written it: "For the meatballs:".
+ *
+ * A heading is a short line ending in a colon that doesn't lead with a
+ * quantity, which leaves real ingredients alone: "2 tbsp soy sauce" leads
+ * with a number, and "Sauce: 2 tbsp soy sauce" doesn't end with the colon.
+ * Mirrored in worker/src/util.js.
+ */
+const ING_HEADING = /^(?![\d\u00bc-\u00be\u2150-\u215e])[^\n]{1,60}:$/;
+
+export const isIngredientHeading = (line) => ING_HEADING.test(String(line ?? '').trim());
+
+/** "For the meatballs:" → "For the meatballs" */
+export const headingLabel = (line) => String(line ?? '').trim().replace(/:$/, '');
+
+/** How many lines are things to buy, rather than headings over them. */
+export const countIngredients = (lines) => lines.filter((l) => !isIngredientHeading(l)).length;
+
+/**
+ * The ingredients as the sections they were written in. Each item keeps its
+ * index in the original list, so ticking a line off stays tied to that line
+ * however the sections are laid out. A recipe with no headings comes back as
+ * one unnamed section, and a heading nothing follows is dropped.
+ */
+export function ingredientGroups(lines) {
+  const groups = [];
+  lines.forEach((text, index) => {
+    if (isIngredientHeading(text)) {
+      groups.push({ heading: headingLabel(text), items: [] });
+      return;
+    }
+    if (!groups.length) groups.push({ heading: null, items: [] });
+    groups[groups.length - 1].items.push({ text, index });
+  });
+  return groups.filter((g) => g.items.length);
+}
+
 // --- pasted-recipe parsing ---
 
 const SECTIONS = [
@@ -522,6 +564,8 @@ export function buildGroceryList({ entries, weekOffset, pantry = [], manual = []
       for (const { recipe } of entry.meals?.[slot.key] || []) {
         if (!recipe) continue;
         for (const text of recipe.ing) {
+          // A section heading names the lines under it; it isn't one of them
+          if (isIngredientHeading(text)) continue;
           const have = pantrySkip(text, pantry);
           if (have) {
             skippedByText.set(text, have.location);

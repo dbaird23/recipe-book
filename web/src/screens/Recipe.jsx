@@ -1,6 +1,6 @@
 import { useRef, useState } from 'react';
 import { Avatar, Photo, Stars } from '../components.jsx';
-import { autoNut, scaleIngredient, formatMinutes } from '../util.js';
+import { autoNut, countIngredients, ingredientGroups, scaleIngredient, formatMinutes } from '../util.js';
 
 function SectionLabel({ children, style }) {
   return <div className="section-label" style={{ margin: '22px 0 10px', ...style }}>{children}</div>;
@@ -31,6 +31,8 @@ export default function Recipe({
     isMine ? (recipe.from ? `Saved from ${recipe.from}` : `Added by ${user.name}`) : `Added by ${recipe.ownerName}`,
   ].filter(Boolean).join(' · ');
   const nut = nutDraft || recipe.nut;
+  // "For the meatballs:" / "For the sauce:": a recipe in parts is laid out in parts
+  const ingGroups = ingredientGroups(recipe.ing);
   // One note per line, the way they were written or imported
   const notes = (recipe.notes || '').split('\n').map((t) => t.trim()).filter(Boolean);
 
@@ -189,33 +191,45 @@ export default function Recipe({
           </div>
         </div>
         <div className="card" style={{ padding: '6px 14px' }}>
-          {recipe.ing.map((txt, i) => {
-            const on = !!checked[i];
-            return (
-              <div
-                key={i}
-                onClick={() => setChecked({ ...checked, [i]: !on })}
-                style={{
-                  display: 'flex', gap: 11, alignItems: 'center', padding: '10px 0',
-                  borderBottom: '1px solid #f4f1ea', cursor: 'pointer',
-                }}
-              >
+          {ingGroups.map((group, gi) => (
+            <div key={gi}>
+              {group.heading && (
                 <div
-                  style={{
-                    width: 20, height: 20, borderRadius: 6, flex: '0 0 auto',
-                    border: `1.5px solid ${on ? 'var(--green)' : '#cfd5ca'}`,
-                    background: on ? 'var(--green)' : '#fff', color: '#fff', fontSize: 12,
-                    display: 'flex', alignItems: 'center', justifyContent: 'center',
-                  }}
+                  className="section-label"
+                  style={{ color: 'var(--green)', fontSize: 11.5, letterSpacing: 0.8, padding: gi ? '16px 0 4px' : '10px 0 4px' }}
                 >
-                  {on ? '✓' : ''}
+                  {group.heading}
                 </div>
-                <div style={{ fontSize: 14.5, color: on ? 'var(--faint)' : 'var(--ink)', textDecoration: on ? 'line-through' : 'none', lineHeight: 1.4 }}>
-                  {scaleIngredient(txt, mult)}
-                </div>
-              </div>
-            );
-          })}
+              )}
+              {group.items.map(({ text, index }) => {
+                const on = !!checked[index];
+                return (
+                  <div
+                    key={index}
+                    onClick={() => setChecked({ ...checked, [index]: !on })}
+                    style={{
+                      display: 'flex', gap: 11, alignItems: 'center', padding: '10px 0',
+                      borderBottom: '1px solid #f4f1ea', cursor: 'pointer',
+                    }}
+                  >
+                    <div
+                      style={{
+                        width: 20, height: 20, borderRadius: 6, flex: '0 0 auto',
+                        border: `1.5px solid ${on ? 'var(--green)' : '#cfd5ca'}`,
+                        background: on ? 'var(--green)' : '#fff', color: '#fff', fontSize: 12,
+                        display: 'flex', alignItems: 'center', justifyContent: 'center',
+                      }}
+                    >
+                      {on ? '✓' : ''}
+                    </div>
+                    <div style={{ fontSize: 14.5, color: on ? 'var(--faint)' : 'var(--ink)', textDecoration: on ? 'line-through' : 'none', lineHeight: 1.4 }}>
+                      {scaleIngredient(text, mult)}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          ))}
         </div>
 
         <SectionLabel>Directions</SectionLabel>
@@ -347,7 +361,7 @@ export default function Recipe({
               <button
                 className="btn-text-green"
                 style={{ marginTop: 10 }}
-                onClick={() => { setNutEditOpen(false); setNutDraft(null); onUpdateNut({ ...autoNut(recipe.ing.length), serving: '' }, false); }}
+                onClick={() => { setNutEditOpen(false); setNutDraft(null); onUpdateNut({ ...autoNut(countIngredients(recipe.ing)), serving: '' }, false); }}
               >
                 Reset to auto
               </button>

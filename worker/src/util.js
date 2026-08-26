@@ -9,6 +9,16 @@ export const uid = () => crypto.randomUUID();
 export const nowIso = () => new Date().toISOString();
 export const pairKey = (a, b) => (a < b ? [a, b] : [b, a]);
 
+export const hex = (bytes) => [...bytes].map((b) => b.toString(16).padStart(2, '0')).join('');
+
+/** Everything we hand out is stored as its SHA-256, never in the clear. */
+export async function sha256Hex(text) {
+  const digest = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(text));
+  return hex(new Uint8Array(digest));
+}
+
+export const randomToken = (bytes = 24) => hex(crypto.getRandomValues(new Uint8Array(bytes)));
+
 export const json = (data, init = {}) =>
   new Response(JSON.stringify(data), {
     ...init,

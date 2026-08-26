@@ -10,6 +10,10 @@ export default defineConfig({
       '/api': 'http://localhost:8787',
       '/uploads': 'http://localhost:8787',
       '/mcp': 'http://localhost:8787',
+      // The OAuth endpoints and their discovery documents, so a client pointed
+      // at the dev server finds the same shape it would in production.
+      '/oauth': 'http://localhost:8787',
+      '/.well-known': 'http://localhost:8787',
     },
   },
 });

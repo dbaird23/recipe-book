@@ -177,6 +177,11 @@ export const mockApi = {
   inviteInfo: async () => demoOnly(),
   createInvite: async () => demoOnly(),
 
+  oauthPending: async () => demoOnly(),
+  oauthConsent: async () => demoOnly(),
+  oauthGrants: async () => ({ grants: [] }),
+  revokeGrant: async () => demoOnly(),
+
   apiKeys: async () => ({ keys: [] }),
   createApiKey: async () => demoOnly(),
   revokeApiKey: async () => demoOnly(),

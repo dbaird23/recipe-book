@@ -51,8 +51,9 @@ that runs entirely in your browser with sample data (single-player; changes stay
   automatically become friends with everyone in the book
 - **Tags**: built-in meal/tag chips plus your own custom tags, reusable across recipes and filters
 - **Google sign-in**, with a passwordless dev sign-in fallback for local development
-- **AI & API access**: each member can issue API keys and point an AI assistant (Cursor, Claude,
-  anything that speaks MCP) at their recipes, pantry and meal plan. See below
+- **AI & API access**: each member can point an AI assistant at their own recipes, pantry and meal
+  plan. **ChatGPT** connects itself: add the connector, sign in, say yes. **Cursor, Claude and
+  anything else that speaks MCP** take an API key instead. See below
 
 ## Stack
 
@@ -64,14 +65,56 @@ The Worker also serves the built SPA, so the whole app is one deployment on one 
 
 ## AI & API access
 
-Members can hand an AI assistant a key to their own book, which is useful for meal planning and grocery
+Members can point an AI assistant at their own book, which is useful for meal planning and grocery
 shopping, where the assistant needs to actually read your recipes rather than invent them.
 
-**Get a key:** tap your avatar → *Connected apps* → **Give an AI assistant access**. Name it, create
-it, and copy the token. It's shown once and stored only as a SHA-256 hash, so a lost key gets
-replaced, not recovered. Revoke any key from the same sheet; it stops working immediately.
+It's one MCP server, at `POST /mcp`, reached two ways depending on what the client can hold:
 
-### Connect Cursor
+| | How it signs in | Who it's for |
+|---|---|---|
+| **OAuth** | The client sends you here to sign in and say yes | ChatGPT, and anything else with no place to put a key |
+| **API key** | A token you paste into a config file | Cursor, Claude Desktop, scripts, `curl` |
+
+Both land in the same place with the same permissions. Everything is managed from one screen: tap
+your avatar → *Connected apps* → **Give an AI assistant access**.
+
+### Connect ChatGPT
+
+ChatGPT's custom connectors have nowhere to put an API key, so it does OAuth instead. There is
+nothing to copy but the address:
+
+1. In ChatGPT: **Settings → Apps & Connectors → Advanced → Developer mode**.
+2. **Create** a connector pointing at `https://recipe-book.dbaird23.workers.dev/mcp`.
+3. ChatGPT opens Pinch. Sign in as yourself and press **Allow**.
+
+That's it: no key, no config file, and nothing to paste back. ChatGPT registers itself, so it never
+needs to be set up on this end either.
+
+Each connection shows up under *Connected apps* with when it was made and last used, and
+**Disconnect** kills it and every token it holds on the spot.
+
+**What actually happens.** ChatGPT calls `/mcp` cold, gets a `401` pointing at
+`/.well-known/oauth-protected-resource`, and takes itself from there:
+
+- `/.well-known/oauth-protected-resource` (RFC 9728) and `/.well-known/oauth-authorization-server`
+  (RFC 8414) say what the API is and who issues tokens for it
+- `POST /oauth/register` registers the client (RFC 7591). Public clients only: no secrets are issued,
+  so there are none to leak
+- `GET /oauth/authorize` checks the request and hands the browser to `/connect`, which is a screen in
+  the app rather than a second login page. Whoever is signed in *in that browser* is the account
+  being connected, which is what makes it safe to do on a shared laptop
+- `POST /oauth/token` swaps the code for an access token (an hour) and a refresh token (90 days),
+  with PKCE `S256` required and refresh tokens rotated on every use
+- `POST /oauth/revoke` (RFC 7009) for a client that wants to hand a token back
+
+Codes and tokens are stored only as SHA-256 hashes, a code is single-use, and a token is bound to
+the server that issued it.
+
+### Connect Cursor, Claude Desktop or a script
+
+**Get a key:** from the same sheet, name it under *New key*, create it, and copy the token. It's
+shown once and stored only as a SHA-256 hash, so a lost key gets replaced, not recovered. Revoke any
+key from the same sheet; it stops working immediately.
 
 The create-key screen prints this config with your URL and token already filled in. Paste it into
 `~/.cursor/mcp.json` (or `.cursor/mcp.json` in a project) and restart Cursor:
@@ -115,7 +158,8 @@ between the two.
 
 ### REST
 
-The same key works against the REST API for anything that isn't MCP:
+The same credential — key or OAuth access token — works against the REST API for anything that isn't
+MCP:
 
 ```bash
 curl https://recipe-book.dbaird23.workers.dev/api/recipes \
@@ -126,9 +170,10 @@ Open to keys: `GET /api/me`, `GET|POST /api/recipes`, `GET|PATCH /api/recipes/:i
 `POST /api/recipes/:id/save`, `GET /api/friends`, `GET /api/friends/recipes`,
 `GET /api/friends/:id/recipes`, `GET|PUT /api/plan`, `POST /api/import`.
 
-**Deliberately not open to keys:** deleting recipes, comments and photos, invites, avatars, and
-issuing or listing keys. Those need a signed-in browser, so a leaked key can't lose you data or let
-anyone else into the book. Every other route answers `403` to a key.
+**Deliberately not open to keys or OAuth tokens:** deleting recipes, comments and photos, invites,
+avatars, issuing or listing keys, and granting access to another app. Those need a signed-in browser,
+so a leaked credential can't lose you data, let anyone else into the book, or quietly grant itself a
+second way in. Every other route answers `403`.
 
 ## Local development
 

@@ -118,12 +118,17 @@ const CODE_BOX = {
  */
 export function ApiKeysSheet({ onClose, toast }) {
   const [keys, setKeys] = useState(null);
+  const [grants, setGrants] = useState([]);
   const [name, setName] = useState('');
   const [busy, setBusy] = useState(false);
   const [created, setCreated] = useState(null);
+  const mcpUrl = `${location.origin}/mcp`;
 
   useEffect(() => {
     api.apiKeys().then(({ keys }) => setKeys(keys)).catch((e) => { toast(e.message); setKeys([]); });
+    // Apps that signed themselves in rather than being handed a key. Quietly
+    // ignored if it fails: the sheet's main job is still keys.
+    api.oauthGrants().then(({ grants }) => setGrants(grants)).catch(() => {});
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -148,6 +153,17 @@ export function ApiKeysSheet({ onClose, toast }) {
       toast(e.message);
     } finally {
       setBusy(false);
+    }
+  }
+
+  async function disconnect(grant) {
+    if (!confirm(`Disconnect “${grant.name}”? It stops reading your book immediately.`)) return;
+    try {
+      await api.revokeGrant(grant.id);
+      setGrants((prev) => prev.filter((g) => g.id !== grant.id));
+      toast(`${grant.name} disconnected`);
+    } catch (e) {
+      toast(e.message);
     }
   }
 
@@ -196,8 +212,58 @@ export function ApiKeysSheet({ onClose, toast }) {
     <Sheet onClose={onClose}>
       <div className="sheet-title">AI &amp; API access</div>
       <div className="sheet-sub">
-        A key lets a tool like Cursor read your recipes, add new ones and work on your meal plan. It can&rsquo;t delete
-        recipes, invite people or change your account.
+        Let an AI assistant read your recipes, add new ones and work on your meal plan. It can&rsquo;t delete recipes,
+        invite people or change your account.
+      </div>
+
+      {/* ChatGPT signs itself in, so there is nothing to copy but the address.
+          It's first because it's the one that needs no key at all. */}
+      <div className="section-label" style={{ fontSize: 11, margin: '18px 0 6px' }}>ChatGPT</div>
+      <div className="sheet-sub" style={{ marginTop: 0 }}>
+        In ChatGPT, go to Settings &rarr; Apps &amp; Connectors &rarr; Advanced &rarr; Developer mode, then{' '}
+        <b>Create</b> a connector with this address. It&rsquo;ll open Pinch to ask you to sign in and say yes.
+        No key needed.
+      </div>
+      <div style={{ ...CODE_BOX, marginTop: 10, color: 'var(--ink)' }}>{mcpUrl}</div>
+      <button className="btn-secondary" style={{ marginTop: 10, width: '100%' }} onClick={() => copy(mcpUrl, 'Address')}>
+        Copy address
+      </button>
+
+      {grants.length > 0 && (
+        <>
+          <div className="section-label" style={{ fontSize: 11, margin: '18px 0 6px' }}>Connected apps</div>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+            {grants.map((g) => (
+              <div
+                key={g.id}
+                style={{
+                  display: 'flex', alignItems: 'center', gap: 10, background: 'var(--card)',
+                  border: '1px solid var(--card-bd)', borderRadius: 12, padding: '10px 12px',
+                }}
+              >
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <div style={{ fontSize: 14, fontWeight: 600 }}>{g.name}</div>
+                  <div style={{ fontSize: 12, color: 'var(--muted)', marginTop: 1 }}>
+                    connected {new Date(g.connectedAt).toLocaleDateString()}
+                    {g.lastUsedAt ? ` · used ${new Date(g.lastUsedAt).toLocaleDateString()}` : ''}
+                  </div>
+                </div>
+                <button
+                  className="btn-text-green"
+                  style={{ fontSize: 13, color: 'var(--red)' }}
+                  onClick={() => disconnect(g)}
+                >
+                  Disconnect
+                </button>
+              </div>
+            ))}
+          </div>
+        </>
+      )}
+
+      <div className="section-label" style={{ fontSize: 11, margin: '18px 0 6px' }}>Keys, for Cursor and scripts</div>
+      <div className="sheet-sub" style={{ marginTop: 0 }}>
+        For anything that wants a token in a header instead.
       </div>
 
       {keys?.length > 0 && (

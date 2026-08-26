@@ -11,6 +11,13 @@ import { importFromUrl } from './importer.js';
 import { bearerToken, userForToken, touchApiKey, listApiKeys, createApiKey, revokeApiKey } from './apikeys.js';
 import { handleMcp } from './mcp.js';
 import {
+  CORS as OAUTH_CORS, OAuthError, oauthErrorResponse,
+  protectedResourceMetadata, authorizationServerMetadata,
+  registerClient, beginAuthorization, pendingRequest, resolveAuthorization,
+  exchangeToken, revokeToken, isAccessToken, userForAccessToken, touchAccessToken,
+  listGrants, revokeGrant,
+} from './oauth.js';
+import {
   HttpError, uid, nowIso, pairKey, json, autoNut, countIngredients, cleanNut, sanitizeRecipeInput, putImage, photoUrl,
   PANTRY_LOCATIONS, parsePantryEntry, GROCERY_SECTIONS, grocerySection, MEALS,
 } from './util.js';
@@ -19,17 +26,23 @@ import {
 
 const routes = [];
 const on = (method, pattern, handler, opts = {}) =>
-  routes.push({ method, pattern: new URLPattern({ pathname: pattern }), handler, key: !!opts.key });
+  routes.push({ method, pattern: new URLPattern({ pathname: pattern }), handler, key: !!opts.key, pub: !!opts.pub });
 const get = (p, h, o) => on('GET', p, h, o);
 const post = (p, h, o) => on('POST', p, h, o);
 const patch = (p, h, o) => on('PATCH', p, h, o);
 const put = (p, h, o) => on('PUT', p, h, o);
 const del = (p, h, o) => on('DELETE', p, h, o);
+const options = (p, h) => on('OPTIONS', p, h, { pub: true });
 
 // Pass as the last argument to open a route to API keys. Keys are for reading
 // and writing recipes and the meal plan. Account-level routes (invites,
 // deleting, avatars, minting more keys) stay cookie-only on purpose.
 const KEY = { key: true };
+
+// Pass to open a route to anyone at all, signed in or not. Only OAuth's own
+// discovery and token endpoints use it: a client has to be able to read them
+// before it has any credentials to read them with.
+const PUBLIC = { pub: true };
 
 // ---------- helpers ----------
 
@@ -805,6 +818,106 @@ del('/api/keys/:id', async (ctx) => {
   return json({ ok: true });
 });
 
+// ---------- OAuth ----------
+//
+// For clients that can't hold an API key. ChatGPT is the one that matters: a
+// custom connector has nowhere to put a bearer token, so it discovers these
+// endpoints, registers itself, and sends the member here to say yes.
+//
+// Everything up to the consent screen is deliberately open: a client has to be
+// able to read the metadata and register before it has any credentials at all.
+// Nothing here grants anything on its own. The only route that decides who a
+// token belongs to is the consent one, and that is cookie-only.
+
+const originOf = (ctx) => new URL(ctx.request.url).origin;
+
+const publicJson = (data) =>
+  json(data, { headers: { ...OAUTH_CORS, 'cache-control': 'public, max-age=3600' } });
+
+// RFC 9728 and RFC 8414. Clients look for these at the root, and some also at
+// the path of the API they're after ("…/oauth-authorization-server/mcp"), so
+// answer both rather than depending on which spelling a client learned.
+for (const path of ['/.well-known/oauth-protected-resource', '/.well-known/oauth-protected-resource/*']) {
+  get(path, (ctx) => publicJson(protectedResourceMetadata(originOf(ctx))), PUBLIC);
+}
+for (const path of [
+  '/.well-known/oauth-authorization-server',
+  '/.well-known/oauth-authorization-server/*',
+  '/.well-known/openid-configuration',
+  '/.well-known/openid-configuration/*',
+]) {
+  get(path, (ctx) => publicJson(authorizationServerMetadata(originOf(ctx))), PUBLIC);
+}
+
+/**
+ * Read a token-endpoint body. The spec says form-encoded and that is what
+ * clients send, but a JSON body costs one line to accept and saves an
+ * afternoon of wondering why a hand-rolled client gets `invalid_request`.
+ */
+async function formParams(request) {
+  const text = await request.text();
+  if (text.trim().startsWith('{')) {
+    try {
+      return new URLSearchParams(Object.entries(JSON.parse(text)).map(([k, v]) => [k, String(v)]));
+    } catch {
+      /* fall through and read it as a form */
+    }
+  }
+  return new URLSearchParams(text);
+}
+
+options('/oauth/register', () => new Response(null, { status: 204, headers: OAUTH_CORS }));
+options('/oauth/token', () => new Response(null, { status: 204, headers: OAUTH_CORS }));
+options('/oauth/revoke', () => new Response(null, { status: 204, headers: OAUTH_CORS }));
+
+post('/oauth/register', async (ctx) => {
+  const registration = await registerClient(ctx.db, await ctx.json());
+  return json(registration, { status: 201, headers: { ...OAUTH_CORS, 'cache-control': 'no-store' } });
+}, PUBLIC);
+
+post('/oauth/token', async (ctx) => {
+  const tokens = await exchangeToken(ctx.db, await formParams(ctx.request));
+  return json(tokens, { headers: { ...OAUTH_CORS, 'cache-control': 'no-store', pragma: 'no-cache' } });
+}, PUBLIC);
+
+post('/oauth/revoke', async (ctx) => {
+  // RFC 7009 wants 200 whatever happened, so a client can't use this endpoint
+  // to find out whether a token it guessed is real.
+  await revokeToken(ctx.db, (await formParams(ctx.request)).get('token'));
+  return json({}, { headers: { ...OAUTH_CORS, 'cache-control': 'no-store' } });
+}, PUBLIC);
+
+get('/oauth/authorize', async (ctx) => {
+  const { redirectTo, consentPath } = await beginAuthorization(ctx.db, new URL(ctx.request.url));
+  // Either the request was malformed and goes back to the client with an
+  // error, or it was fine and the member is sent to the app to answer it.
+  return new Response(null, { status: 302, headers: { location: redirectTo || consentPath, 'cache-control': 'no-store' } });
+}, PUBLIC);
+
+// The consent screen. Cookie-only, both of them: whoever is signed in *in this
+// browser* is the account being connected, which is the whole point. An API key
+// or an access token must never be able to grant another one.
+get('/api/oauth/pending', async (ctx) => {
+  requireUser(ctx);
+  const url = new URL(ctx.request.url);
+  return json({ request: await pendingRequest(ctx.db, url.searchParams.get('rq')) });
+});
+
+post('/api/oauth/consent', async (ctx) => {
+  const me = requireUser(ctx);
+  const body = await ctx.json();
+  const redirectTo = await resolveAuthorization(ctx.db, body.rq, me.id, body.allow === true);
+  return json({ redirectTo });
+});
+
+// Connected apps, so a connection can be undone from the same place it shows up.
+get('/api/oauth/grants', async (ctx) => json({ grants: await listGrants(ctx.db, requireUser(ctx).id) }));
+
+del('/api/oauth/grants/:id', async (ctx) => {
+  await revokeGrant(ctx.db, requireUser(ctx).id, ctx.params.id);
+  return json({ ok: true });
+});
+
 // ---------- photo serving ----------
 
 get('/uploads/:key', async (ctx) => {
@@ -864,11 +977,23 @@ export default {
       },
     };
 
-    /** Cookie or API key, whichever the caller brought. Sets ctx.user/ctx.key. */
+    /**
+     * Cookie, API key or OAuth access token, whichever the caller brought.
+     * Sets ctx.user/ctx.key. A token and a key are the same thing as far as the
+     * rest of the app is concerned: both reach only the routes marked KEY.
+     */
     const authenticate = async () => {
       const token = bearerToken(request);
       if (!token) {
         ctx.user = await currentUser(request, ctx.db);
+        return;
+      }
+      if (isAccessToken(token)) {
+        const found = await userForAccessToken(ctx.db, token, url.origin);
+        if (!found) throw new OAuthError('invalid_token', 'That access token is no longer valid', 401);
+        ctx.user = found.user;
+        ctx.key = found.key;
+        execCtx?.waitUntil(touchAccessToken(ctx.db, found.key.hash));
         return;
       }
       const found = await userForToken(ctx.db, token);
@@ -885,12 +1010,19 @@ export default {
         if (request.method === 'POST') await authenticate();
         return await handleMcp(request, {
           authed: !!ctx.key,
+          // What an unauthenticated client is told to read to find out how to
+          // sign in. It's how ChatGPT discovers the OAuth flow at all: it calls
+          // /mcp cold, gets a 401, and follows this.
+          resourceMetadata: `${url.origin}/.well-known/oauth-protected-resource`,
           call: (method, path, body) => callApi(ctx, method, path, body),
         });
       } catch (err) {
-        const status = err instanceof HttpError ? err.status : 500;
-        if (!(err instanceof HttpError)) console.error(err.stack || err);
-        return json({ jsonrpc: '2.0', id: null, error: { code: -32000, message: err.message } }, { status });
+        const status = err instanceof HttpError || err instanceof OAuthError ? err.status : 500;
+        if (!(err instanceof HttpError) && !(err instanceof OAuthError)) console.error(err.stack || err);
+        const headers = err instanceof OAuthError
+          ? { 'www-authenticate': `Bearer error="${err.code}", resource_metadata="${url.origin}/.well-known/oauth-protected-resource"` }
+          : {};
+        return json({ jsonrpc: '2.0', id: null, error: { code: -32000, message: err.message } }, { status, headers });
       }
     }
 
@@ -900,7 +1032,7 @@ export default {
       if (!match) continue;
       ctx.params = match.pathname.groups;
       try {
-        await authenticate();
+        if (!route.pub) await authenticate();
         if (ctx.key && !route.key) {
           throw new HttpError(403, 'API keys can only reach recipes and the meal plan. Sign in for this one');
         }
@@ -908,6 +1040,7 @@ export default {
       } catch (err) {
         // Deliberate HttpErrors carry a message meant for the user; anything
         // else is a bug and gets logged, not leaked.
+        if (err instanceof OAuthError) return oauthErrorResponse(err);
         if (err instanceof HttpError) return json({ error: err.message }, { status: err.status });
         console.error(err.stack || err);
         return json({ error: 'Something went wrong' }, { status: 500 });

@@ -41,6 +41,11 @@ const realApi = {
   inviteInfo: (token) => request(`/api/invites/${token}`),
   createInvite: (phone) => request('/api/invites', { method: 'POST', body: { phone } }),
 
+  oauthPending: (rq) => request(`/api/oauth/pending?rq=${encodeURIComponent(rq)}`),
+  oauthConsent: (rq, allow) => request('/api/oauth/consent', { method: 'POST', body: { rq, allow } }),
+  oauthGrants: () => request('/api/oauth/grants'),
+  revokeGrant: (id) => request(`/api/oauth/grants/${id}`, { method: 'DELETE' }),
+
   apiKeys: () => request('/api/keys'),
   createApiKey: (name) => request('/api/keys', { method: 'POST', body: { name } }),
   revokeApiKey: (id) => request(`/api/keys/${id}`, { method: 'DELETE' }),

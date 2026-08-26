@@ -9,6 +9,7 @@ import { AddStep1, AddStep2 } from './screens/Add.jsx';
 import Plan from './screens/Plan.jsx';
 import Pantry from './screens/Pantry.jsx';
 import Groceries from './screens/Groceries.jsx';
+import Connect from './screens/Connect.jsx';
 import { ProfileSheet, ApiKeysSheet, FilterSheet, ShareSheet, InviteSheet, RemoveFriendSheet, PlanPickerSheet, PlanRecipeSheet } from './sheets.jsx';
 import { matchesFilters, customTagsFrom, nextSort, buildGroceryList, splitPantryEntries, MEAL_SLOTS, mondayOf, addDays, isoDate } from './util.js';
 
@@ -28,6 +29,9 @@ export default function App() {
   const [booted, setBooted] = useState(false);
   const [invite, setInvite] = useState(null);
   const [inviteToken, setInviteToken] = useState(null);
+  // Set when we've landed on /connect: an outside app is asking for access and
+  // this tab exists to answer that, not to browse recipes.
+  const [connectRq, setConnectRq] = useState(null);
 
   const [screen, setScreen] = useState('home');
   const [myRecipes, setMyRecipes] = useState([]);
@@ -98,10 +102,17 @@ export default function App() {
         setInvite(await api.inviteInfo(inviteMatch[1]).catch((e) => ({ error: e.message })));
       }
 
+      const connecting = location.pathname === '/connect'
+        ? new URLSearchParams(location.search).get('rq')
+        : null;
+      if (connecting) setConnectRq(connecting);
+
       try {
         const { user: u } = await api.me();
         setUser(u);
-        await loadAll();
+        // The consent screen needs nothing but the account, and this tab is
+        // about to leave for whoever asked, so don't pull the whole book in.
+        if (!connecting) await loadAll();
         const r = new URLSearchParams(location.search).get('r');
         if (r) {
           try {
@@ -124,7 +135,7 @@ export default function App() {
   async function handleSignedIn(u) {
     setUser(u);
     if (inviteToken) history.replaceState(null, '', import.meta.env.BASE_URL);
-    await loadAll();
+    if (!connectRq) await loadAll();
   }
 
   async function signOut() {
@@ -500,6 +511,15 @@ export default function App() {
             {invite.error}
           </div>
         )}
+        {toastMsg && <div className="toast">{toastMsg}</div>}
+      </div>
+    );
+  }
+
+  if (connectRq) {
+    return (
+      <div className="app">
+        <Connect user={user} rq={connectRq} onSignOut={signOut} />
         {toastMsg && <div className="toast">{toastMsg}</div>}
       </div>
     );

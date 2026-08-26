@@ -2,8 +2,14 @@
 // Claude, anything that speaks MCP).
 //
 // Transport is Streamable HTTP at POST /mcp, run statelessly: no session id,
-// every request carries its own API key, replies are plain JSON rather than
+// every request carries its own credentials, replies are plain JSON rather than
 // SSE. Auth is bearer-only; a browser cookie is deliberately not enough.
+//
+// Two ways to hold that bearer. A client that can keep a static header (Cursor,
+// a script) uses an API key. A client that can't (ChatGPT, whose connectors
+// have nowhere to put one) runs OAuth instead: it calls this endpoint cold, the
+// 401 below points it at the protected-resource metadata, and it takes itself
+// through the flow in oauth.js. Both arrive here as a bearer token.
 //
 // The tools don't touch the database. Each one calls the same route handlers
 // the web app uses, so permissions, validation and shapes can never drift
@@ -19,7 +25,8 @@ const SERVER_INFO = { name: 'recipe-book', title: 'Pinch', version: '1.0.0' };
 const CORS = {
   'access-control-allow-origin': '*',
   'access-control-allow-methods': 'POST, OPTIONS',
-  'access-control-allow-headers': 'authorization, content-type, mcp-protocol-version',
+  'access-control-allow-headers': 'authorization, content-type, mcp-protocol-version, mcp-session-id',
+  'access-control-expose-headers': 'www-authenticate, mcp-protocol-version',
   'access-control-max-age': '86400',
 };
 
@@ -551,18 +558,26 @@ async function handleMessage(message, call) {
 }
 
 /**
- * Serve POST /mcp. `call(method, path, body)` runs one of our own API routes
- * as the key's owner; `authed` says whether a valid API key was presented.
+ * Serve POST /mcp. `call(method, path, body)` runs one of our own API routes as
+ * the caller's owner; `authed` says whether a valid key or access token was
+ * presented; `resourceMetadata` is the URL an unauthenticated client should
+ * read to find out how to get one.
  */
-export async function handleMcp(request, { authed, call }) {
+export async function handleMcp(request, { authed, call, resourceMetadata }) {
   if (request.method === 'OPTIONS') return new Response(null, { status: 204, headers: CORS });
   if (request.method !== 'POST') {
     return json(fail(null, -32600, 'Send MCP requests as POST'), { status: 405, headers: { ...CORS, allow: 'POST, OPTIONS' } });
   }
   if (!authed) {
-    return json(fail(null, -32001, 'Add an API key: Authorization: Bearer rb_…'), {
+    // RFC 9728: point at the metadata rather than just saying no. A client that
+    // speaks OAuth follows this and connects itself; one that doesn't still has
+    // a sentence telling a human what to paste.
+    return json(fail(null, -32001, 'Not connected. Sign in through this server’s OAuth flow, or send an API key: Authorization: Bearer rb_…'), {
       status: 401,
-      headers: { ...CORS, 'www-authenticate': 'Bearer' },
+      headers: {
+        ...CORS,
+        'www-authenticate': `Bearer resource_metadata="${resourceMetadata}"`,
+      },
     });
   }
 

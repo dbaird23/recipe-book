@@ -4,20 +4,13 @@
 // A key authenticates as its owner but reaches a deliberately smaller surface
 // than a signed-in browser does: routes opt in individually (see `KEY` in
 // index.js), so account-level actions stay cookie-only.
-import { HttpError, uid, nowIso } from './util.js';
+import { HttpError, uid, nowIso, sha256Hex, randomToken } from './util.js';
 
 const TOKEN_BYTES = 24;
 const PREFIX = 'rb_';
 // How stale `last_used_at` has to be before a request bothers rewriting it.
 // Every API call would otherwise cost an extra D1 write.
 const LAST_USED_RESOLUTION_MS = 5 * 60_000;
-
-const hex = (bytes) => [...bytes].map((b) => b.toString(16).padStart(2, '0')).join('');
-
-async function hashToken(token) {
-  const digest = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(token));
-  return hex(new Uint8Array(digest));
-}
 
 export const apiKeyPublic = (row) => ({
   id: row.id,
@@ -42,14 +35,14 @@ export async function createApiKey(db, userId, name) {
   const { n } = await db.prepare('SELECT COUNT(*) AS n FROM api_keys WHERE user_id=?').bind(userId).first();
   if (n >= 10) throw new HttpError(409, 'You already have 10 keys. Revoke one first');
 
-  const token = PREFIX + hex(crypto.getRandomValues(new Uint8Array(TOKEN_BYTES)));
+  const token = PREFIX + randomToken(TOKEN_BYTES);
   const row = {
     id: uid(),
     user_id: userId,
     name: clean,
     // Enough to recognise a key at a glance, far too little to guess it
     prefix: token.slice(0, PREFIX.length + 6),
-    hash: await hashToken(token),
+    hash: await sha256Hex(token),
     created_at: nowIso(),
     last_used_at: null,
   };
@@ -78,7 +71,7 @@ export async function userForToken(db, token) {
   if (!token || !token.startsWith(PREFIX)) return null;
   const row = await db
     .prepare('SELECT u.*, k.id AS key_id, k.name AS key_name FROM api_keys k JOIN users u ON u.id=k.user_id WHERE k.hash=?')
-    .bind(await hashToken(token))
+    .bind(await sha256Hex(token))
     .first();
   if (!row) return null;
   const { key_id, key_name, ...user } = row;

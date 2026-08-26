@@ -9,7 +9,9 @@
   "assets": {
     "directory": "../web/dist",
     "not_found_handling": "single-page-application",
-    "run_worker_first": ["/api/*", "/uploads/*", "/mcp"]
+    // "/connect" is deliberately absent: it's a screen in the app, so the SPA
+    // fallback should serve it like any other.
+    "run_worker_first": ["/api/*", "/uploads/*", "/mcp", "/oauth/*", "/.well-known/*"]
   },
 
   "d1_databases": [

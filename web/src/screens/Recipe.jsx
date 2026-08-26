@@ -85,7 +85,7 @@ export default function Recipe({
       </div>
 
       <div className="scroll" style={{ padding: '4px 20px 40px' }}>
-        <Photo photo={hero} style={{ height: 186, borderRadius: 16, overflow: 'hidden' }} className={hero ? '' : 'photo-ph'} label={recipe.title} />
+        <Photo photo={hero} style={{ aspectRatio: '1 / 1', borderRadius: 16, overflow: 'hidden' }} className={hero ? '' : 'photo-ph'} label={recipe.title} />
 
         {(photos.length > 1 || isMine) && (
           <div style={{ display: 'flex', gap: 8, marginTop: 8, overflowX: 'auto' }}>

@@ -742,6 +742,28 @@ post('/api/groceries', async (ctx) => {
   return json({ item: { id, text, section } });
 }, KEY);
 
+// Reworded rather than re-added: the aisle is worked out again from the new
+// text, unless one was picked by hand, since "chicken" and "chicken broth"
+// belong on different shelves.
+patch('/api/groceries/:id', async (ctx) => {
+  const me = requireUser(ctx);
+  const row = await ctx.db
+    .prepare('SELECT * FROM grocery_items WHERE id=? AND user_id=?')
+    .bind(ctx.params.id, me.id)
+    .first();
+  if (!row) throw new HttpError(404, 'That isn’t on your grocery list');
+  const body = await ctx.json();
+  const text = String(body.text ?? '').trim().slice(0, 100);
+  if (!text) throw new HttpError(400, 'An item needs some words');
+  const asked = String(body.section || '').trim().toLowerCase();
+  const section = GROCERY_SECTIONS.some((s) => s.key === asked) ? asked : grocerySection(text);
+  await ctx.db
+    .prepare('UPDATE grocery_items SET text=?, section=?, updated_at=? WHERE id=?')
+    .bind(text, section, nowIso(), row.id)
+    .run();
+  return json({ item: { id: row.id, text, section } });
+}, KEY);
+
 del('/api/groceries/:id', async (ctx) => {
   const me = requireUser(ctx);
   const row = await ctx.db

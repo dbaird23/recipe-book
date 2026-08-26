@@ -9,7 +9,7 @@ import { AddStep1, AddStep2 } from './screens/Add.jsx';
 import Plan from './screens/Plan.jsx';
 import Pantry from './screens/Pantry.jsx';
 import Groceries from './screens/Groceries.jsx';
-import { ProfileSheet, ApiKeysSheet, FilterSheet, ShareSheet, InviteSheet, RemoveFriendSheet, PlanPickerSheet } from './sheets.jsx';
+import { ProfileSheet, ApiKeysSheet, FilterSheet, ShareSheet, InviteSheet, RemoveFriendSheet, PlanPickerSheet, PlanRecipeSheet } from './sheets.jsx';
 import { matchesFilters, customTagsFrom, nextSort, buildGroceryList, splitPantryEntries, MEAL_SLOTS, mondayOf, addDays, isoDate } from './util.js';
 
 const EMPTY_FILTERS = { selMeals: [], selTags: [], query: '', rating: 0 };
@@ -57,6 +57,9 @@ export default function App() {
   // shop doesn't quietly hide this week's flour.
   const [groceryChecked, setGroceryChecked] = useState(() => readStore('rb-grocery-v3'));
   const [groceryHidden, setGroceryHidden] = useState(() => readStore('rb-grocery-hidden-v1'));
+  // Lines reworded for this week's shop. A recipe's wording belongs to the
+  // recipe, so the new words are kept here rather than written back to it.
+  const [groceryNames, setGroceryNames] = useState(() => readStore('rb-grocery-names-v1'));
   // pantry: what's already in the kitchen, so the grocery list can skip it
   const [pantry, setPantry] = useState([]);
   // groceries added by hand, alongside whatever the week's plan calls for
@@ -208,6 +211,25 @@ export default function App() {
     return savePlanDay(date, { [slot.key]: rest });
   }
 
+  // Planning from the recipe screen, where the week on show isn't the week the
+  // plan screen happens to have loaded. A meal is written back whole, so what's
+  // already on it is read fresh rather than taken from planEntries, which could
+  // be another week's or not loaded at all: a stale read would silently drop
+  // whatever else was on that meal.
+  async function planRecipeOn(date, meal, recipeId) {
+    try {
+      const { entries } = await api.plan(date, date);
+      const already = (entries.find((e) => e.date === date)?.meals?.[meal] || []).map((m) =>
+        m.type === 'recipe' ? { type: 'recipe', recipeId: m.recipe?.id } : { type: m.type, text: m.text }
+      );
+      await savePlanDay(date, { [meal]: [...writable(already), { type: 'recipe', recipeId }] });
+      return true;
+    } catch (e) {
+      toast(e.message);
+      return false;
+    }
+  }
+
   // Every recipe you could plan: yours plus your friends', labelled by owner
   const plannableRecipes = [
     ...myRecipes.map((r) => ({ ...r, ownerLabel: 'Yours' })),
@@ -222,6 +244,11 @@ export default function App() {
     pantry,
     manual: groceryItems,
     hidden: Object.keys(groceryHidden).filter((k) => k.startsWith(`${weekStart}::`)).map((k) => k.slice(weekStart.length + 2)),
+    renamed: Object.fromEntries(
+      Object.entries(groceryNames)
+        .filter(([k]) => k.startsWith(`${weekStart}::`))
+        .map(([k, v]) => [k.slice(weekStart.length + 2), v])
+    ),
   });
 
   // One store for every week, so a key names the week it belongs to
@@ -266,6 +293,26 @@ export default function App() {
     try {
       await api.removeGroceryItem(item.manualId);
       setGroceryItems((prev) => prev.filter((x) => x.id !== item.manualId));
+    } catch (e) {
+      toast(e.message);
+    }
+  }
+
+  // Something added by hand is genuinely reworded, since those words are the
+  // only ones it has. An ingredient the plan asked for keeps the recipe's
+  // wording and gets yours laid over it for this week's shop.
+  async function renameGroceryItem(item, text) {
+    if (!item.manualId) {
+      setGroceryNames((prev) => {
+        const next = { ...prev, [weekKey(item.key)]: text };
+        localStorage.setItem('rb-grocery-names-v1', JSON.stringify(next));
+        return next;
+      });
+      return;
+    }
+    try {
+      const { item: saved } = await api.updateGroceryItem(item.manualId, text);
+      setGroceryItems((prev) => prev.map((x) => (x.id === saved.id ? saved : x)));
     } catch (e) {
       toast(e.message);
     }
@@ -504,6 +551,7 @@ export default function App() {
           onAdd={addGroceryItem}
           onRemove={removeGroceryItem}
           onRestore={restoreGroceryItem}
+          onRename={renameGroceryItem}
           onOpenRecipe={(id) => openRecipeById(id, 'groceries')}
         />
       )}
@@ -574,6 +622,7 @@ export default function App() {
             setScreen('add2');
           }}
           onShare={() => setSheet('share')}
+          onAddToPlan={() => setSheet('plan')}
           onSaveToMine={async () => {
             try {
               await api.saveRecipe(currentRecipe.id);
@@ -694,6 +743,18 @@ export default function App() {
         <ShareSheet recipe={currentRecipe} onClose={() => setSheet(null)} toast={toast} />
       )}
       {sheet === 'invite' && <InviteSheet onClose={() => setSheet(null)} toast={toast} />}
+
+      {sheet === 'plan' && currentRecipe && (
+        <PlanRecipeSheet
+          title={currentRecipe.title}
+          onClose={() => setSheet(null)}
+          onPick={async (date, slot, dayName) => {
+            const ok = await planRecipeOn(date, slot.key, currentRecipe.id);
+            setSheet(null);
+            if (ok) toast(`On ${dayName} ${slot.label.toLowerCase()}`);
+          }}
+        />
+      )}
 
       {picking && (
         <PlanPickerSheet

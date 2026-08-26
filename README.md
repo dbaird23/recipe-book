@@ -35,12 +35,14 @@ that runs entirely in your browser with sample data (single-player; changes stay
 - **Plan**: a week at a time, with breakfast, lunch and dinner on every day. A meal holds as many
   things as it takes (spaghetti and meatballs is the meatball recipe plus a typed "spaghetti"), each
   one a recipe (yours or a friend's), "leftovers", or anything you type ("Takeout", "Date night"), plus
-  a note for the day; clear one dish or the whole day in a tap
+  a note for the day; clear one dish or the whole day in a tap. Any recipe can be put on the week
+  from its own page, without going to the plan first
 - **Groceries**: its own tab, built from the week's plan and laid out by aisle (produce, dairy,
   freezer…) rather than by day, so it's one walk through the shop. An ingredient several meals need
-  is a single line that says how many recipes want it; tap to see which, or to open one. Add
-  anything by hand, tick things off as you go (a ticked line leaves the list and waits in "the
-  trolley" at the bottom) and swipe any line left to drop it from this week's shop
+  is a single line that says how many recipes want it; tap the count to see which, or to open one.
+  Add anything by hand and the aisle is read off the words rather than picked. Tick a line off with
+  its box (it leaves the list and waits in "the trolley" at the bottom), tap its words to reword it
+  for this shop, and swipe it left to drop it from the week altogether
 - **Friends**: each member has their own book; browse a friend's recipes, search across all friends,
   save any recipe into your own book (a clean copy: no tags or comments carried over, credited to
   them, and independent of their later edits)
@@ -230,9 +232,10 @@ work from inside `worker/`. The npm scripts above run from anywhere in the repo.
   minus the logos, headshots and Pinterest graphics. A site that lays either out in a way the
   importer doesn't recognise simply comes back without them; everything is editable on the review
   screen either way.
-- **Ticks and hand-struck lines on the grocery list** live in the browser, filed under the week they
-  belong to, so a shop doesn't need a round trip in an aisle and last week's list can't hide this
-  week's flour. Striking a planned ingredient off only hides it for that week; the recipe still
-  calls for it.
+- **Ticks, hand-struck lines and rewordings on the grocery list** live in the browser, filed under
+  the week they belong to, so a shop doesn't need a round trip in an aisle and last week's list can't
+  hide this week's flour. Striking a planned ingredient off only hides it for that week, and
+  rewording one lays your words over the recipe's rather than editing it; the recipe still calls for
+  what it calls for.
 - **AI & API access** isn't in the prototype at all. It exists so an assistant can plan meals and
   build a shopping list against the real book instead of guessing.

@@ -85,6 +85,8 @@ const realApi = {
 
   groceries: () => request('/api/groceries'),
   addGroceryItem: (text, section) => request('/api/groceries', { method: 'POST', body: { text, section } }),
+  updateGroceryItem: (id, text, section) =>
+    request(`/api/groceries/${id}`, { method: 'PATCH', body: { text, section } }),
   removeGroceryItem: (id) => request(`/api/groceries/${id}`, { method: 'DELETE' }),
 };
 

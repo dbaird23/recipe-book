@@ -387,6 +387,15 @@ export const mockApi = {
     save();
     return { item };
   },
+  updateGroceryItem: async (id, text, section) => {
+    const clean = String(text || '').trim().slice(0, 100);
+    if (!clean) throw new Error('An item needs some words');
+    const known = GROCERY_SECTIONS.some((s) => s.key === section);
+    const item = { id, text: clean, section: known ? section : grocerySection(clean) };
+    state.groceries = (state.groceries || []).map((x) => (x.id === id ? item : x));
+    save();
+    return { item };
+  },
   removeGroceryItem: async (id) => {
     state.groceries = (state.groceries || []).filter((x) => x.id !== id);
     save();

@@ -2,7 +2,10 @@ import { useEffect, useRef, useState } from 'react';
 import { api } from './api.js';
 import { Avatar, Sheet, ChipToggle, Photo } from './components.jsx';
 import AvatarCropper from './cropper.jsx';
-import { MEALS, TAGS, RATING_FILTERS, metaOf } from './util.js';
+import {
+  MEALS, TAGS, RATING_FILTERS, metaOf,
+  MEAL_SLOTS, DAY_NAMES, mondayOf, addDays, isoDate, shortDate, weekTitle, isToday,
+} from './util.js';
 
 export function ProfileSheet({ user, layout, setLayout, onClose, onSaved, onSignOut, onOpenKeys, toast }) {
   const [name, setName] = useState(user.name);
@@ -528,6 +531,92 @@ export function RemoveFriendSheet({ friend, onClose, onConfirm }) {
         Remove {friend.name}
       </button>
       <button className="btn-ghost" style={{ marginTop: 8 }} onClick={onClose}>Cancel</button>
+    </Sheet>
+  );
+}
+
+/**
+ * The meal picker turned around: instead of "what shall we have on Tuesday",
+ * this is "when shall we have this", opened from the recipe itself. A week at a
+ * time, three meals a day, one tap to plan it. Days already carrying something
+ * say so, so you can see the week filling up without leaving the recipe.
+ *
+ * The week's plan is fetched when the sheet opens rather than trusted from
+ * whatever the plan screen last loaded, because a meal is written back whole:
+ * planning Tuesday dinner from a stale copy would drop whatever else was on it.
+ */
+export function PlanRecipeSheet({ title, onPick, onClose }) {
+  const [offset, setOffset] = useState(0);
+  const [entries, setEntries] = useState(null); // null = still loading
+  const [busy, setBusy] = useState(false);
+  const monday = mondayOf(offset);
+  const days = DAY_NAMES.map((name, i) => ({ name, date: addDays(monday, i) }));
+
+  useEffect(() => {
+    let stale = false;
+    setEntries(null);
+    api
+      .plan(isoDate(monday), isoDate(addDays(monday, 6)))
+      .then((r) => { if (!stale) setEntries(r.entries); })
+      .catch(() => { if (!stale) setEntries([]); });
+    return () => { stale = true; };
+  }, [offset]);
+
+  const byDate = Object.fromEntries((entries || []).map((e) => [e.date, e]));
+
+  return (
+    <Sheet onClose={onClose}>
+      <div className="sheet-title">Plan {title}</div>
+      <div className="sheet-sub">Pick a meal and it joins whatever&rsquo;s already on it.</div>
+
+      <div style={{ display: 'flex', alignItems: 'center', gap: 10, margin: '14px 0 6px' }}>
+        <button className="week-nav" onClick={() => setOffset(offset - 1)} aria-label="Previous week">‹</button>
+        <div style={{ flex: 1, textAlign: 'center', fontSize: 12.5, color: 'var(--muted)' }}>
+          {weekTitle(offset)} · {shortDate(monday)} – {shortDate(addDays(monday, 6))}
+        </div>
+        <button className="week-nav" onClick={() => setOffset(offset + 1)} aria-label="Next week">›</button>
+      </div>
+
+      <div style={{ maxHeight: '46vh', overflowY: 'auto', margin: '0 -4px', padding: '0 4px' }}>
+        {days.map((day) => {
+          const meals = byDate[isoDate(day.date)]?.meals || {};
+          return (
+            <div
+              key={isoDate(day.date)}
+              style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '7px 0', borderTop: '1px solid #f4f1ea' }}
+            >
+              <div style={{ flex: '0 0 auto', width: 62 }}>
+                <div style={{ fontSize: 12.5, fontWeight: 700, color: isToday(day.date) ? 'var(--green)' : 'var(--ink)' }}>
+                  {day.name.slice(0, 3)}
+                </div>
+                <div style={{ fontSize: 10.5, color: 'var(--faint)' }}>{shortDate(day.date)}</div>
+              </div>
+              <div style={{ flex: 1, display: 'flex', gap: 6 }}>
+                {MEAL_SLOTS.map((slot) => {
+                  const on = (meals[slot.key] || []).length;
+                  return (
+                    <button
+                      key={slot.key}
+                      className={`chip${on ? ' on' : ''}`}
+                      disabled={busy || entries === null}
+                      onClick={async () => {
+                        if (busy) return;
+                        setBusy(true);
+                        await onPick(isoDate(day.date), slot, day.name);
+                      }}
+                      style={{ flex: 1, padding: '7px 2px', fontSize: 11, opacity: entries === null ? 0.5 : 1 }}
+                    >
+                      {slot.label}{on ? ` ·${on}` : ''}
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+          );
+        })}
+      </div>
+
+      <button className="btn-ghost" style={{ marginTop: 12 }} onClick={onClose}>Cancel</button>
     </Sheet>
   );
 }

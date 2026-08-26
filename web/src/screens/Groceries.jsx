@@ -1,6 +1,6 @@
 import { useRef, useState } from 'react';
 import { Check } from '../components.jsx';
-import { GROCERY_SECTIONS, mondayOf, addDays, shortDate, weekTitle } from '../util.js';
+import { mondayOf, addDays, shortDate, weekTitle } from '../util.js';
 
 const ROW_BORDER = '1px solid #f4f1ea';
 
@@ -18,6 +18,9 @@ function SwipeRow({ onDelete, deleteLabel, children }) {
 
   function down(e) {
     if (e.pointerType === 'mouse' && e.button !== 0) return;
+    // Dragging across a line you're editing is selecting words, not swiping the
+    // row out of the way
+    if (e.target.closest('input')) return;
     drag.current = { x: e.clientX, y: e.clientY, from: dx, axis: null };
   }
 
@@ -63,7 +66,7 @@ function SwipeRow({ onDelete, deleteLabel, children }) {
           position: 'relative', background: 'var(--card)', touchAction: 'pan-y', padding: '0 12px',
           transform: `translateX(${dx}px)`, transition: drag.current ? 'none' : 'transform .18s ease',
         }}
-        // A swipe shouldn't also tick the item off
+        // A swipe shouldn't also open the line for editing
         onClickCapture={(e) => { if (dx) { e.stopPropagation(); setDx(0); } }}
       >
         {children}
@@ -75,25 +78,70 @@ function SwipeRow({ onDelete, deleteLabel, children }) {
 /**
  * One line to buy. An ingredient several of the week's meals want is a single
  * line here, and it says so: tapping the count opens the recipes behind it so
- * you can see what you'd be short of if you skipped it. Ticking it off takes it
- * off the list; swiping it left removes it altogether.
+ * you can see what you'd be short of if you skipped it. Swiping it left removes
+ * it altogether.
+ *
+ * The tick and the words do different jobs. Ticking it off takes it off the
+ * list, so only the box does that; tapping the words opens them for editing,
+ * because a line you reach for mid-shop is usually one you want to reword
+ * ("2 lb chicken thighs, boneless" is a recipe's wording, not a shopping list's).
  */
-function ItemRow({ item, onToggle, onOpenRecipe, onRemove }) {
+function ItemRow({ item, onToggle, onOpenRecipe, onRemove, onRename }) {
   const [open, setOpen] = useState(false);
+  const [draft, setDraft] = useState(null); // null = not editing
+  const settled = useRef(false);
   const shared = item.sources.length > 1;
   const only = item.sources.length === 1 ? item.sources[0] : null;
   // The same recipe cooked twice in a week is two meals, not two recipes
   const distinct = new Set(item.sources.map((s) => s.recipeId)).size;
 
+  // Return, Escape and tapping away all land here, and the first one through
+  // wins: Return closes the input, which fires a blur behind it, and an edit
+  // shouldn't be saved twice. Blanking a line keeps the old words rather than
+  // leaving a row with nothing written on it; the swipe is how you delete.
+  function finish(text, keep) {
+    if (settled.current) return;
+    settled.current = true;
+    setDraft(null);
+    const v = (text || '').trim();
+    if (!keep || !v || v === item.label) return;
+    onRename(item, v);
+  }
+
   return (
     <SwipeRow onDelete={() => onRemove(item)} deleteLabel={`Delete ${item.label}`}>
-      <div
-        onClick={onToggle}
-        style={{ display: 'flex', gap: 10, alignItems: 'flex-start', padding: '9px 0', cursor: 'pointer' }}
-      >
-        <Check on={false} style={{ marginTop: 1 }} />
+      <div style={{ display: 'flex', gap: 10, alignItems: 'flex-start', padding: '9px 0' }}>
+        {/* Padded out to a thumb's worth of target while the tick stays small */}
+        <button
+          onClick={onToggle}
+          aria-label={`Tick off ${item.label}`}
+          style={{ flex: '0 0 auto', border: 'none', background: 'none', cursor: 'pointer', padding: '2px 8px 8px 2px', margin: '-2px -8px -8px -2px' }}
+        >
+          <Check on={false} style={{ marginTop: 1 }} />
+        </button>
         <div style={{ flex: 1, minWidth: 0 }}>
-          <div style={{ fontSize: 13.5, lineHeight: 1.4, color: 'var(--ink)' }}>{item.label}</div>
+          {draft !== null ? (
+            <input
+              className="input"
+              autoFocus
+              value={draft}
+              onChange={(e) => setDraft(e.target.value)}
+              onFocus={(e) => e.target.select()}
+              onBlur={(e) => finish(e.target.value, true)}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter') finish(e.currentTarget.value, true);
+                if (e.key === 'Escape') finish('', false);
+              }}
+              style={{ width: '100%', fontSize: 13.5, padding: '4px 8px' }}
+            />
+          ) : (
+            <div
+              onClick={() => { settled.current = false; setDraft(item.label); }}
+              style={{ fontSize: 13.5, lineHeight: 1.4, color: 'var(--ink)', cursor: 'text' }}
+            >
+              {item.label}
+            </div>
+          )}
 
           {shared && (
             <div style={{ display: 'flex', gap: 7, alignItems: 'baseline', flexWrap: 'wrap', marginTop: 2 }}>
@@ -151,15 +199,20 @@ function ItemRow({ item, onToggle, onOpenRecipe, onRemove }) {
   );
 }
 
+/**
+ * Just the words. The aisle is read off them: "batteries" is household and
+ * "sourdough" is bakery without being asked, and anything unrecognised lands in
+ * Other, which is a shorter walk than picking from a list of nine every time.
+ * A line filed somewhere odd can be reworded in place, and it moves.
+ */
 function AddRow({ onAdd }) {
   const [text, setText] = useState('');
-  const [section, setSection] = useState('');
 
   function submit() {
     const v = text.trim();
     if (!v) return;
     setText('');
-    onAdd(v, section || null);
+    onAdd(v, null);
   }
 
   return (
@@ -172,20 +225,6 @@ function AddRow({ onAdd }) {
         placeholder="Add an item"
         style={{ flex: 1, minWidth: 0, padding: '9px 12px' }}
       />
-      <select
-        value={section}
-        onChange={(e) => setSection(e.target.value)}
-        aria-label="Aisle"
-        style={{
-          flex: '0 0 auto', maxWidth: 104, border: '1px solid var(--input-bd)', borderRadius: 12,
-          background: 'var(--card)', color: 'var(--chip-fg)', fontSize: 13, fontWeight: 600, padding: '9px 6px',
-        }}
-      >
-        <option value="">Aisle</option>
-        {GROCERY_SECTIONS.map((s) => (
-          <option key={s.key} value={s.key}>{s.label}</option>
-        ))}
-      </select>
       <button className="btn-pill-solid" style={{ flex: '0 0 auto', padding: '9px 15px' }} onClick={submit}>
         Add
       </button>
@@ -204,7 +243,7 @@ function AddRow({ onAdd }) {
  * aisle you don't walk down folds away too.
  */
 export default function Groceries({
-  weekOffset, setWeekOffset, sections, skipped, removed, total, checked, onToggle, onAdd, onRemove, onRestore, onOpenRecipe,
+  weekOffset, setWeekOffset, sections, skipped, removed, total, checked, onToggle, onAdd, onRemove, onRestore, onRename, onOpenRecipe,
 }) {
   const [showSkipped, setShowSkipped] = useState(false);
   const [showDone, setShowDone] = useState(false);
@@ -286,6 +325,7 @@ export default function Groceries({
                       onToggle={() => onToggle(item.key)}
                       onOpenRecipe={onOpenRecipe}
                       onRemove={onRemove}
+                      onRename={onRename}
                     />
                   ))}
                 </div>
@@ -317,10 +357,15 @@ export default function Groceries({
                 {done.map((item) => (
                   <div
                     key={item.key}
-                    onClick={() => onToggle(item.key)}
-                    style={{ display: 'flex', gap: 10, alignItems: 'center', padding: '9px 0', borderBottom: ROW_BORDER, cursor: 'pointer' }}
+                    style={{ display: 'flex', gap: 10, alignItems: 'center', padding: '9px 0', borderBottom: ROW_BORDER }}
                   >
-                    <Check on />
+                    <button
+                      onClick={() => onToggle(item.key)}
+                      aria-label={`Put ${item.label} back on the list`}
+                      style={{ flex: '0 0 auto', border: 'none', background: 'none', cursor: 'pointer', padding: '6px 8px 6px 2px', margin: '-6px -8px -6px -2px' }}
+                    >
+                      <Check on />
+                    </button>
                     <div style={{ flex: 1, minWidth: 0, fontSize: 13.5, color: 'var(--faint)', textDecoration: 'line-through' }}>
                       {item.label}
                     </div>

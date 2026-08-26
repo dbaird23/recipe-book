@@ -8,7 +8,7 @@ function SectionLabel({ children, style }) {
 
 export default function Recipe({
   recipe, user, isMine, savedAlready,
-  goBack, onEdit, onShare, onSaveToMine,
+  goBack, onEdit, onShare, onSaveToMine, onAddToPlan,
   onUpdateNotes, onUpdateNut, onAddComment, onDeleteComment, onAddPhoto, onRemovePhoto, onRate,
 }) {
   const [checked, setChecked] = useState({});
@@ -70,7 +70,11 @@ export default function Recipe({
     <div className="screen">
       <div className="back-row">
         <button className="btn-link" onClick={goBack}>‹ Back</button>
-        <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+        <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
+          {/* Planning is the same question whoever's recipe it is, so it sits in
+              the row either way: a friend's recipe goes on your week without
+              having to be saved to your book first. */}
+          <button className="btn-pill-outline" onClick={onAddToPlan} title="Add to meal plan">+ Plan</button>
           {isMine ? (
             <>
               <button className="btn-pill-outline" onClick={onEdit}>Edit</button>
@@ -79,7 +83,7 @@ export default function Recipe({
           ) : savedAlready ? (
             <span style={{ color: 'var(--green)', fontSize: 13, fontWeight: 600, padding: '8px 6px' }}>✓ Saved</span>
           ) : (
-            <button className="btn-pill-solid" onClick={onSaveToMine}>Save to my recipes</button>
+            <button className="btn-pill-solid" onClick={onSaveToMine}>Save</button>
           )}
         </div>
       </div>

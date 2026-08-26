@@ -465,8 +465,8 @@ export const GROCERY_SECTIONS = [
 // recognise lands in "Other" rather than somewhere confidently wrong.
 const AISLE_RULES = [
   ['frozen', /\bfrozen\b|\bice creams?\b|\bpopsicles?\b|\bice\b/],
-  ['bakery', /\bbreads?\b|\bbaguettes?\b|\bbuns?\b|\brolls?\b|\btortillas?\b|\bpitas?\b|\bnaan\b|\bbagels?\b|\bcroissants?\b|\benglish muffins?\b|\bpie crusts?\b/],
-  ['pantry', /\b(?:broth|stock|bouillon)\b|\b(?:peanut|almond) butter\b|\bcoconut (?:milk|cream)\b|\b(?:evaporated|condensed|powdered) milk\b|\bcream of (?:tartar|\w+ soup)\b|\begg noodles\b|\bcans?\b|\bcanned\b|\bjarred\b|\bdried\b|\bground (?:ginger|cinnamon|nutmeg|cloves?|mustard|coriander|allspice|pepper)\b|\btomato (?:paste|sauce|puree)\b|\b(?:black|white) pepper\b|\bpeppercorns?\b|\bred pepper flakes\b|\bsalt and pepper\b|\bcorn(?:starch|meal|\s+syrup)\b|\bchocolates?\b|\bcocoa\b/],
+  ['bakery', /\bbreads?\b|\bsourdough\b|\bloaf\b|\bloaves\b|\bciabatta\b|\bfocaccia\b|\bbrioche\b|\bbaguettes?\b|\bbuns?\b|\brolls?\b|\btortillas?\b|\bpitas?\b|\bnaan\b|\bbagels?\b|\bcroissants?\b|\benglish muffins?\b|\bpie crusts?\b/],
+  ['pantry', /\b(?:broth|stock|bouillon)\b|\b(?:peanut|almond) butter\b|\bcoconut (?:milk|cream)\b|\b(?:evaporated|condensed|powdered) milk\b|\bcream of (?:tartar|\w+ soup)\b|\begg noodles\b|\bcans?\b|\bcanned\b|\btins?\b|\btinned\b|\bjarred\b|\bdried\b|\bground (?:ginger|cinnamon|nutmeg|cloves?|mustard|coriander|allspice|pepper)\b|\btomato (?:paste|sauce|puree)\b|\b(?:black|white) pepper\b|\bpeppercorns?\b|\bred pepper flakes\b|\bsalt and pepper\b|\bcorn(?:starch|meal|\s+syrup)\b|\bchocolates?\b|\bcocoa\b/],
   ['dairy', /\bmilk\b|\bbuttermilk\b|\bcreams?\b|\bhalf.and.half\b|\bbutter\b|\bmargarine\b|\bcheeses?\b|\bcheddar\b|\bmozzarella\b|\bparmesan\b|\bpecorino\b|\bfeta\b|\bricotta\b|\bgouda\b|\bbrie\b|\bswiss\b|\bmonterey jack\b|\byogh?urts?\b|\beggs?\b|\bghee\b/],
   ['meat', /\bchickens?\b|\bbeef\b|\bsteaks?\b|\bpork\b|\bbacon\b|\bsausages?\b|\bturkey\b|\blamb\b|\bveal\b|\bham\b|\bprosciutto\b|\bpepperoni\b|\bchorizo\b|\bribs?\b|\bbrisket\b|\bsalmon\b|\bshrimps?\b|\bprawns?\b|\bfish\b|\btunas?\b|\bcod\b|\btilapia\b|\bhalibut\b|\bscallops?\b|\bcrab\b|\blobster\b|\bmussels\b|\bclams\b|\btofu\b/],
   ['produce', /\bonions?\b|\bscallions?\b|\bshallots?\b|\bgarlic\b|\bgingers?\b|\btomato(?:es)?\b|\bpotato(?:es)?\b|\bsweet potato(?:es)?\b|\bcarrots?\b|\bcelery\b|\blettuce\b|\bromaine\b|\bspinach\b|\bkale\b|\barugula\b|\bgreens\b|\bcabbage\b|\bbroccoli\b|\bcauliflower\b|\bzucchini\b|\bsquash\b|\bcucumbers?\b|\bbell peppers?\b|\b(?:red|green|yellow|orange|poblano|banana|chil[il]) peppers?\b|\bpeppers\b|\bjalape[nñ]os?\b|\bmushrooms?\b|\bgreen beans?\b|\bpeas\b|\bsnap peas\b|\bcorn\b|\basparagus\b|\bavocados?\b|\blemons?\b|\blimes?\b|\boranges?\b|\bapples?\b|\bbananas?\b|\bberries\b|\bgrapes\b|\bmelon\b|\bpineapple\b|\bmango(?:es)?\b|\bpears?\b|\bpeach(?:es)?\b|\bherbs?\b|\bbasil\b|\bparsley\b|\bcilantro\b|\bdill\b|\bmint\b|\bthyme\b|\brosemary\b|\bsage\b|\bchives\b|\bleeks?\b|\bradish(?:es)?\b|\bbeets?\b|\bbrussels sprouts\b|\bsalad\b|\bsprouts?\b/],
@@ -549,8 +549,10 @@ const capitalize = (s) => (s ? s[0].toUpperCase() + s.slice(1) : s);
  * is dropped, and every drop is handed back in `skipped`, since a loose name match
  * will occasionally lose something you did need. `hidden` is the lines struck
  * off by hand this week: the recipe still calls for them, this shop doesn't.
+ * `renamed` is the lines reworded this week, by key: the recipe's wording is
+ * what it is, but what you want to read in the shop is your own.
  */
-export function buildGroceryList({ entries, weekOffset, pantry = [], manual = [], hidden = [] }) {
+export function buildGroceryList({ entries, weekOffset, pantry = [], manual = [], hidden = [], renamed = {} }) {
   const skippedByText = new Map();
   const rows = new Map();
   const isHidden = new Set(hidden);
@@ -593,15 +595,20 @@ export function buildGroceryList({ entries, weekOffset, pantry = [], manual = []
     }
   });
 
+  // What a derived line reads as: one recipe means its own wording, quantity and
+  // all; several means the ingredient itself, with the amounts each recipe asked
+  // for beside it. A line you've reworded reads the way you wrote it.
+  const labelOf = (row) => renamed[row.key] || (row.sources.length > 1 ? capitalize(row.name) : row.text);
+
   const struck = [...rows.values()].filter((row) => isHidden.has(row.key));
   const items = [...rows.values()].filter((row) => !isHidden.has(row.key)).map((row) => ({
     key: row.key,
-    // One recipe: its own wording, quantity and all. Several: the ingredient
-    // itself, with the amounts each recipe asked for beside it.
-    label: row.sources.length > 1 ? capitalize(row.name) : row.text,
+    label: labelOf(row),
     amounts: row.sources.length > 1 ? row.amounts.filter(Boolean) : [],
     sources: row.sources,
-    section: row.section,
+    // Reworded lines are filed again from the new words: "chicken broth" cut
+    // down to "broth" is still a pantry shelf, but "stock" isn't the meat counter.
+    section: renamed[row.key] ? grocerySection(renamed[row.key]) : row.section,
     manualId: null,
   }));
 
@@ -626,7 +633,7 @@ export function buildGroceryList({ entries, weekOffset, pantry = [], manual = []
     total: items.length,
     skipped: [...skippedByText].map(([text, location]) => ({ text, location })),
     // Handed back so a line struck off by hand can be put back on
-    removed: struck.map((row) => ({ key: row.key, label: capitalize(row.name) || row.text })),
+    removed: struck.map((row) => ({ key: row.key, label: labelOf(row) || capitalize(row.name) || row.text })),
   };
 }
 

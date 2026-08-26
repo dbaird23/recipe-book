@@ -932,6 +932,35 @@ get('/uploads/:key', async (ctx) => {
   return new Response(object.body, { headers });
 });
 
+// ---------- the app's own screens ----------
+
+/**
+ * The two paths a browser can land on that aren't "/". Both are listed in
+ * run_worker_first, so they reach the Worker ahead of the asset store; no file
+ * is shipped at either name, so nothing is being shadowed.
+ *
+ * They used to arrive by way of not_found_handling: "single-page-application",
+ * which answered every unmatched path with index.html and a 200. That served
+ * these two, but it also handed back HTML for a missing script or icon, with
+ * the wrong content type and a success status, which is a confusing way to
+ * find out that a deploy left a stale reference behind. Naming the screens is
+ * cheap -- there are two -- and it lets a miss be a miss.
+ *
+ * Asked for by path rather than inlined, so it stays whatever the last build
+ * produced, hashed asset names and all. "/" rather than "/index.html" because
+ * html_handling normalises the explicit filename away with a redirect.
+ */
+const shell = (ctx) => ctx.env.ASSETS.fetch(new URL('/', ctx.request.url));
+
+get('/connect', shell, PUBLIC);
+get('/invite/:token', shell, PUBLIC);
+
+// An invite is a link someone texts to a friend, and the thing that unfurls it
+// on the way may ask with HEAD. The asset store answers HEAD for real files by
+// itself; these two are ours, so they have to say it out loud.
+on('HEAD', '/connect', shell, PUBLIC);
+on('HEAD', '/invite/:token', shell, PUBLIC);
+
 // ---------- calling our own routes ----------
 
 /**
@@ -1047,7 +1076,10 @@ export default {
       }
     }
 
-    // Unmatched /api, /uploads or /mcp path (assets are handled before the Worker)
+    // Nothing matched. Either an unmatched /api, /uploads or /mcp path, or a
+    // request for a file the asset store hasn't got: not_found_handling is
+    // "none", which passes a miss down here rather than answering it with the
+    // app shell. Both are genuinely not found, so both say so.
     return json({ error: 'Not found' }, { status: 404 });
   },
 };

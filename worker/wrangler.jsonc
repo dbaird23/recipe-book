@@ -4,14 +4,26 @@
   "main": "src/index.js",
   "compatibility_date": "2026-08-01",
 
-  // The built SPA. Navigation requests are served straight from the asset
-  // store; only the API and photo routes wake the Worker.
+  // The built SPA. "/" is served straight from the asset store, so the ordinary
+  // way in never wakes the Worker.
   "assets": {
     "directory": "../web/dist",
-    "not_found_handling": "single-page-application",
-    // "/connect" is deliberately absent: it's a screen in the app, so the SPA
-    // fallback should serve it like any other.
-    "run_worker_first": ["/api/*", "/uploads/*", "/mcp", "/oauth/*", "/.well-known/*"]
+    "binding": "ASSETS",
+    // A miss is a miss. The alternative, "single-page-application", answers
+    // *every* unmatched path with index.html and a 200, so a stale bundle
+    // reference comes back as HTML labelled as JavaScript and a missing icon
+    // as HTML labelled as an image. The app navigates to exactly three paths --
+    // "/", which is a real file, plus the two named below -- so there is
+    // nothing left for a catch-all to catch. (Sharing a recipe links to
+    // "/?r=<id>", which is still just "/".)
+    "not_found_handling": "none",
+    // Everything here wakes the Worker. "/connect" and "/invite/*" are screens
+    // rather than endpoints: they used to arrive via the SPA fallback, and now
+    // that there isn't one the Worker hands back the shell itself.
+    "run_worker_first": [
+      "/api/*", "/uploads/*", "/mcp", "/oauth/*", "/.well-known/*",
+      "/connect", "/invite/*"
+    ]
   },
 
   "d1_databases": [

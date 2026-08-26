@@ -349,12 +349,16 @@ export default function App() {
     return added;
   }
 
+  // Handed back so a rename taken mid-inventory can move that walk's count too:
+  // "beans" reworded to "3 cans beans" carries a new one.
   async function renamePantryItem(id, text) {
     try {
       const { item } = await api.renamePantryItem(id, text);
       setPantry((prev) => prev.map((x) => (x.id === item.id ? item : x)));
+      return item;
     } catch (e) {
       toast(e.message);
+      return null;
     }
   }
 

@@ -19,6 +19,19 @@ function Row({ item, inv, qty, out, editing, editDraft, setEditDraft, onStartEdi
   if (editing) {
     return (
       <div style={ROW}>
+        {/* The box stays put while you type, so rewording something halfway
+            down the shelves doesn't lose your place in the walk */}
+        {inv && (
+          <button
+            onClick={onToggleOut}
+            aria-pressed={!out}
+            aria-label={out ? `${item.name}, out` : `${item.name}, in stock`}
+            onMouseDown={(e) => e.preventDefault()}
+            style={{ flex: '0 0 auto', display: 'flex', border: 'none', background: 'none', cursor: 'pointer', padding: 7, margin: -7 }}
+          >
+            <Check on={!out} />
+          </button>
+        )}
         <input
           className="input"
           autoFocus
@@ -47,8 +60,7 @@ function Row({ item, inv, qty, out, editing, editDraft, setEditDraft, onStartEdi
   return (
     <div style={ROW}>
       {/* Only the box crosses an item out. The padding buys a thumb-sized
-          target without moving anything, and the row itself stays inert so a
-          tap that lands beside the box does nothing at all. */}
+          target without moving anything. */}
       {inv && (
         <button
           onClick={onToggleOut}
@@ -59,12 +71,15 @@ function Row({ item, inv, qty, out, editing, editDraft, setEditDraft, onStartEdi
           <Check on={!out} />
         </button>
       )}
+      {/* Tapping the words rewords the item, taking stock or not: half of a walk
+          down the shelves is finding that what you wrote down says the wrong
+          thing. Only the box crosses an item out, so the two never collide. */}
       <div
-        onClick={inv ? undefined : onStartEdit}
+        onClick={onStartEdit}
         style={{
           flex: 1, minWidth: 0, fontSize: 13.5, color: out ? 'var(--faint)' : 'var(--ink)',
           textDecoration: out ? 'line-through' : 'none',
-          cursor: inv ? 'default' : 'text',
+          cursor: 'text',
         }}
       >
         {item.name}
@@ -112,8 +127,8 @@ function Row({ item, inv, qty, out, editing, editDraft, setEditDraft, onStartEdi
  * items. "Take inventory" is the walk down the shelves: untick the box beside
  * anything that's gone (only the box, and the count stays put, so a mis-tap
  * costs nothing) and everything still unticked when you save is removed. You
- * can add during that walk too, since half of taking stock is finding things
- * you never wrote down.
+ * can add and reword during that walk too, since half of taking stock is
+ * finding things you never wrote down and things you wrote down wrong.
  */
 export default function Pantry({ items, onAdd, onRename, onRemove, onSetQty, onSaveInventory }) {
   const [drafts, setDrafts] = useState({});
@@ -171,10 +186,22 @@ export default function Pantry({ items, onAdd, onRename, onRemove, onSetQty, onS
     }
   }
 
-  function commitEdit(item) {
+  // What the row is actually showing, which during a walk is that walk's count
+  // rather than the stored one: stepping something to 5 and then rewording it
+  // shouldn't put it back to the 2 on file.
+  const lineOf = (item) => pantryLine(inv ? { ...item, qty: qtyOf(item) } : item);
+
+  async function commitEdit(item) {
     const text = editDraft.trim();
     setEditId(null);
-    if (text && text !== pantryLine(item)) onRename(item.id, text);
+    if (!text || text === lineOf(item)) return;
+    const saved = await onRename(item.id, text);
+    // A rename can carry a new count ("beans" becomes "3 cans beans"). The walk
+    // writes its own counts when it's saved, so this one has to move with it or
+    // saving would quietly undo the rename.
+    if (saved) {
+      setInv((prev) => (prev ? { ...prev, qty: { ...prev.qty, [item.id]: saved.qty } } : prev));
+    }
   }
 
   return (
@@ -276,7 +303,7 @@ export default function Pantry({ items, onAdd, onRename, onRemove, onSetQty, onS
                       editing={editId === item.id}
                       editDraft={editDraft}
                       setEditDraft={setEditDraft}
-                      onStartEdit={() => { setEditId(item.id); setEditDraft(pantryLine(item)); }}
+                      onStartEdit={() => { setEditId(item.id); setEditDraft(lineOf(item)); }}
                       onCommitEdit={() => commitEdit(item)}
                       onCancelEdit={() => setEditId(null)}
                       onSetQty={(qty) =>

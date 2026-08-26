@@ -29,9 +29,10 @@ that runs entirely in your browser with sample data (single-player; changes stay
   you'd say it: "two cans of black beans, a bag of rice and three onions" lands as three items, spoken
   numbers and all, and the count can come after the thing too ("spaghetti 2 bags"). Counts step up and
   down right on the shelf, and each shelf folds away. The grocery list leaves those ingredients out and
-  shows you what it skipped. **Take inventory** walks the shelves in one pass: cross out what's gone
-  (the count stays put, so a mis-tap costs nothing), add whatever you find, and everything still crossed
-  out drops off when you save
+  shows you what it skipped. Tap any item's words to reword it. **Take inventory** walks the shelves in
+  one pass: cross out what's gone with its box (the count stays put, so a mis-tap costs nothing), add
+  whatever you find, reword anything that reads wrong, and everything still crossed out drops off when
+  you save
 - **Plan**: a week at a time, with breakfast, lunch and dinner on every day. A meal holds as many
   things as it takes (spaghetti and meatballs is the meatball recipe plus a typed "spaghetti"), each
   one a recipe (yours or a friend's), "leftovers", or anything you type ("Takeout", "Date night"), plus

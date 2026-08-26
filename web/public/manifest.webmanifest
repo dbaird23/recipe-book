@@ -1,6 +1,6 @@
 {
-  "name": "Recipe Book",
-  "short_name": "Recipe Book",
+  "name": "Pinch",
+  "short_name": "Pinch",
   "description": "Your private recipe book. No feeds, no strangers, just your recipes and your friends'.",
   "start_url": ".",
   "scope": ".",

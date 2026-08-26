@@ -1,4 +1,4 @@
--- Recipe Book schema (D1)
+-- Pinch schema (D1)
 
 CREATE TABLE IF NOT EXISTS users (
   id TEXT PRIMARY KEY,

@@ -411,7 +411,7 @@ export function ShareSheet({ recipe, onClose, toast }) {
   }
   async function nativeShare() {
     try {
-      await navigator.share({ title: recipe.title, text: `${recipe.title}, from my Recipe Book`, url: link });
+      await navigator.share({ title: recipe.title, text: `${recipe.title}, from my recipe book on Pinch`, url: link });
       onClose();
     } catch {
       /* user cancelled */
@@ -459,14 +459,14 @@ export function InviteSheet({ onClose, toast }) {
     }
   }
 
-  const smsBody = invite ? encodeURIComponent(`Join my Recipe Book! ${invite.url}`) : '';
+  const smsBody = invite ? encodeURIComponent(`Join me on Pinch! ${invite.url}`) : '';
 
   return (
     <Sheet onClose={onClose}>
       <div className="sheet-title">Invite a friend</div>
       {invite ? (
         <>
-          <div className="sheet-sub">Their private link to join your Recipe Book. It works once.</div>
+          <div className="sheet-sub">Their private link to join you on Pinch. It works once.</div>
           <div
             style={{
               marginTop: 14, background: 'var(--card)', border: '1px solid var(--card-bd)', borderRadius: 12,
@@ -500,7 +500,7 @@ export function InviteSheet({ onClose, toast }) {
         </>
       ) : (
         <>
-          <div className="sheet-sub">We&rsquo;ll make a private link you can text them to join your Recipe Book.</div>
+          <div className="sheet-sub">We&rsquo;ll make a private link you can text them to join you on Pinch.</div>
           <input
             className="input"
             style={{ marginTop: 14, fontSize: 16, padding: '12px 14px' }}

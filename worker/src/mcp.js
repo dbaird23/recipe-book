@@ -14,7 +14,7 @@ import {
 } from './util.js';
 
 const PROTOCOL_VERSION = '2025-06-18';
-const SERVER_INFO = { name: 'recipe-book', title: 'Recipe Book', version: '1.0.0' };
+const SERVER_INFO = { name: 'recipe-book', title: 'Pinch', version: '1.0.0' };
 
 const CORS = {
   'access-control-allow-origin': '*',
@@ -157,7 +157,7 @@ const TOOLS = [
   {
     name: 'whoami',
     title: 'Who am I',
-    description: 'Check which Recipe Book account this API key belongs to. Useful for confirming the connection works.',
+    description: 'Check which Pinch account this API key belongs to. Useful for confirming the connection works.',
     inputSchema: { type: 'object', properties: {} },
     run: async (call) => (await call('GET', '/api/me')).user,
   },
@@ -516,7 +516,7 @@ async function handleMessage(message, call) {
         capabilities: { tools: { listChanged: false } },
         serverInfo: SERVER_INFO,
         instructions:
-          'Recipe Book is a small, invite-only recipe collection shared between family and friends. ' +
+          'Pinch is a small, invite-only recipe collection shared between family and friends. ' +
           'Recipes belong to people: you can read and plan with anyone’s, but only edit your own. ' +
           'Dates are always YYYY-MM-DD in the planner, and each day has a breakfast, a lunch and a dinner, ' +
           'each of which can hold more than one thing. ' +

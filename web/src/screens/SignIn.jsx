@@ -60,7 +60,7 @@ export default function SignIn({ config, invite, inviteToken, onSignedIn, onErro
         height={124}
         style={{ display: 'block', marginBottom: 6 }}
       />
-      <div style={{ fontSize: 28, fontWeight: 700, letterSpacing: -0.5 }}>Recipe Book</div>
+      <div style={{ fontSize: 28, fontWeight: 700, letterSpacing: -0.5 }}>Pinch</div>
       <div style={{ fontSize: 15, color: 'var(--muted)', marginTop: 10, maxWidth: 250, lineHeight: 1.5 }}>
         Your private recipe book. No feeds, no strangers, just your recipes and your friends&rsquo;.
       </div>

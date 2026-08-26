@@ -92,7 +92,7 @@ export async function findOrCreateUser(db, { sub, email, name, inviteToken }) {
     invite = inviteToken
       ? await db.prepare('SELECT * FROM invites WHERE token=? AND used_by IS NULL').bind(inviteToken).first()
       : null;
-    if (!invite) throw new HttpError(403, 'Recipe Book is invite only. Ask for an invite link to join.');
+    if (!invite) throw new HttpError(403, 'Pinch is invite only. Ask for an invite link to join.');
   }
 
   const id = uid();

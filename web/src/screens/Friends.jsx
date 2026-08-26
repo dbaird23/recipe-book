@@ -58,7 +58,7 @@ export function Friends({
             ))}
             <div style={{ marginTop: 8, background: 'var(--green-soft)', borderRadius: 14, padding: 16, textAlign: 'center' }}>
               <div style={{ fontSize: 13.5, color: '#4c5a4c', lineHeight: 1.5 }}>
-                Recipe Book is invite only.
+                Pinch is invite only.
                 <br />
                 {user.isAdmin ? 'Text a friend a link to join.' : 'Only the group admin can invite new members.'}
               </div>

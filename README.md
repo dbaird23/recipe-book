@@ -1,4 +1,4 @@
-# Recipe Book
+# Pinch
 
 A private, invite-only recipe book for family and friends. No feeds, no strangers, just your
 recipes and your friends'.

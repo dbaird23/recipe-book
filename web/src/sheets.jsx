@@ -112,6 +112,54 @@ const CODE_BOX = {
 };
 
 /**
+ * Adding to the grocery list by voice. There's no app for Siri to talk to, so
+ * it goes through a Shortcut: the shortcut's name is the phrase, and it posts
+ * what you say to the same route the Add row uses. A run of items in one
+ * breath ("milk, eggs and bread") is read apart at the other end.
+ *
+ * The token is only in hand for the moment after a key is made, so the steps
+ * show the header ready to copy then, and say where to get one otherwise.
+ */
+function SiriSteps({ token, onCopy }) {
+  const url = `${location.origin}/api/groceries`;
+  const header = `Bearer ${token || 'rb_your_key_here'}`;
+  return (
+    <>
+      <div className="sheet-sub" style={{ marginTop: 0 }}>
+        On an iPhone, Siri can put things on your list. In <b>Shortcuts</b>, make a new shortcut named{' '}
+        <b>Add to grocery list</b> &mdash; the name is the phrase you say. Give it two actions:
+      </div>
+      <ol style={{ margin: '10px 0 0', paddingLeft: 20, fontSize: 13, lineHeight: 1.6, color: 'var(--muted)' }}>
+        <li><b>Dictate Text</b>, so it asks what you want.</li>
+        <li>
+          <b>Get Contents of URL</b>, pointed at the address below. Set Method to <b>POST</b>, add one header{' '}
+          <b>Authorization</b> with the value below, and a <b>JSON</b> request body with a single field{' '}
+          <b>text</b> set to <b>Dictated Text</b>.
+        </li>
+      </ol>
+      <div style={{ ...CODE_BOX, marginTop: 10, color: 'var(--ink)' }}>{url}</div>
+      <button className="btn-secondary" style={{ marginTop: 8, width: '100%' }} onClick={() => onCopy(url, 'Address')}>
+        Copy address
+      </button>
+      <div style={{ ...CODE_BOX, marginTop: 8, color: token ? 'var(--ink)' : 'var(--faint)' }}>{header}</div>
+      {token ? (
+        <button className="btn-secondary" style={{ marginTop: 8, width: '100%' }} onClick={() => onCopy(header, 'Header')}>
+          Copy header value
+        </button>
+      ) : (
+        <div className="sheet-sub" style={{ marginTop: 8 }}>
+          Make a key below and its header is shown ready to copy, the once.
+        </div>
+      )}
+      <div className="sheet-sub" style={{ marginTop: 8 }}>
+        Then: &ldquo;Hey Siri, add to grocery list.&rdquo; Say as many things as you like in one go &mdash; they land as
+        separate lines, each in its own aisle.
+      </div>
+    </>
+  );
+}
+
+/**
  * API keys, for pointing an AI assistant at your recipes. The token is shown
  * once, at creation. After that only its first few characters are recoverable,
  * so the sheet leans on making that one moment easy to copy from.
@@ -192,6 +240,8 @@ export function ApiKeysSheet({ onClose, toast }) {
         <button className="btn-primary" style={{ marginTop: 10 }} onClick={() => copy(created.token, 'Key')}>
           Copy key
         </button>
+        <div className="section-label" style={{ fontSize: 11, margin: '18px 0 6px' }}>Groceries by Siri</div>
+        <SiriSteps token={created.token} onCopy={copy} />
         <div className="section-label" style={{ fontSize: 11, margin: '18px 0 6px' }}>For Cursor</div>
         <div className="sheet-sub" style={{ marginTop: 0 }}>
           Paste this into <code>~/.cursor/mcp.json</code>, then restart Cursor. Its AI gets tools for reading, adding and
@@ -260,6 +310,9 @@ export function ApiKeysSheet({ onClose, toast }) {
           </div>
         </>
       )}
+
+      <div className="section-label" style={{ fontSize: 11, margin: '18px 0 6px' }}>Groceries by Siri</div>
+      <SiriSteps token={null} onCopy={copy} />
 
       <div className="section-label" style={{ fontSize: 11, margin: '18px 0 6px' }}>Keys, for Cursor and scripts</div>
       <div className="sheet-sub" style={{ marginTop: 0 }}>

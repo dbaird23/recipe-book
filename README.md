@@ -41,7 +41,8 @@ that runs entirely in your browser with sample data (single-player; changes stay
 - **Groceries**: its own tab, built from the week's plan and laid out by aisle (produce, dairy,
   freezer…) rather than by day, so it's one walk through the shop. An ingredient several meals need
   is a single line that says how many recipes want it; tap the count to see which, or to open one.
-  Add anything by hand and the aisle is read off the words rather than picked. Tick a line off with
+  Add anything by hand, in a run if you like ("milk, eggs and bread" is three lines), and the aisle
+  is read off the words rather than picked. Tick a line off with
   its box (it leaves the list and waits in "the trolley" at the bottom), tap its words to reword it
   for this shop, and swipe it left to drop it from the week altogether
 - **Friends**: each member has their own book; browse a friend's recipes, search across all friends,
@@ -133,6 +134,25 @@ The create-key screen prints this config with your URL and token already filled 
 Any MCP client works the same way. The endpoint is Streamable HTTP at `POST /mcp`, stateless, with
 the key in an `Authorization: Bearer` header.
 
+### Add to the grocery list by voice
+
+A shortcut, since there's no app for Siri to talk to. In **Shortcuts** on an iPhone, make one named
+**Add to grocery list** (the name is the phrase Siri listens for) with two actions:
+
+1. **Dictate Text**.
+2. **Get Contents of URL** on `https://recipe-book.dbaird23.workers.dev/api/groceries`, Method
+   **POST**, one header `Authorization: Bearer rb_your_key_here`, and a **JSON** request body with a
+   single field `text` set to **Dictated Text**.
+
+Then: "Hey Siri, add to grocery list." A breath's worth of items goes in at once, because the route
+reads one line as the run of items it may be: "milk, eggs and bread" lands as three, each filed into
+its own aisle. Splitting on "and" occasionally cuts an item in half ("bread and butter pickles"),
+the same trade the pantry makes, and the same one it's forgiven for: every line stays editable and
+removable on the list.
+
+The steps are printed with the address and header already filled in on the screen that shows a new
+key, which is the one moment the token is in hand.
+
 ### Tools
 
 | Tool | What it does |
@@ -150,7 +170,7 @@ the key in an `Authorization: Bearer` header.
 | `update_pantry_item` | Change an item's name, count, unit or shelf |
 | `remove_pantry_item` | Take something out, used up or gone off |
 | `grocery_list` | Everything to buy for a date range: the planned recipes' ingredients minus what the pantry covers, plus hand-added items, each tagged with its aisle |
-| `add_grocery_item` | Put something on the grocery list by hand |
+| `add_grocery_item` | Put something on the grocery list by hand, or several in one line |
 | `remove_grocery_item` | Take a hand-added item off the list |
 
 The tools call the same route handlers the web app does, so permissions and validation can't drift
@@ -168,7 +188,9 @@ curl https://recipe-book.dbaird23.workers.dev/api/recipes \
 
 Open to keys: `GET /api/me`, `GET|POST /api/recipes`, `GET|PATCH /api/recipes/:id`,
 `POST /api/recipes/:id/save`, `GET /api/friends`, `GET /api/friends/recipes`,
-`GET /api/friends/:id/recipes`, `GET|PUT /api/plan`, `POST /api/import`.
+`GET /api/friends/:id/recipes`, `GET|PUT /api/plan`, `POST /api/import`,
+`GET|POST|PUT /api/pantry`, `PATCH|DELETE /api/pantry/:id`, `GET|POST /api/groceries`,
+`PATCH|DELETE /api/groceries/:id`.
 
 **Deliberately not open to keys or OAuth tokens:** deleting recipes, comments and photos, invites,
 avatars, issuing or listing keys, and granting access to another app. Those need a signed-in browser,

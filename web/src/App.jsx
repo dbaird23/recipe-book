@@ -11,7 +11,7 @@ import Pantry from './screens/Pantry.jsx';
 import Groceries from './screens/Groceries.jsx';
 import Connect from './screens/Connect.jsx';
 import { ProfileSheet, ApiKeysSheet, FilterSheet, ShareSheet, InviteSheet, RemoveFriendSheet, PlanPickerSheet, PlanRecipeSheet } from './sheets.jsx';
-import { matchesFilters, customTagsFrom, nextSort, buildGroceryList, splitPantryEntries, MEAL_SLOTS, mondayOf, addDays, isoDate } from './util.js';
+import { matchesFilters, customTagsFrom, nextSort, buildGroceryList, splitSpokenEntries, MEAL_SLOTS, mondayOf, addDays, isoDate } from './util.js';
 
 const EMPTY_FILTERS = { selMeals: [], selTags: [], query: '', rating: 0 };
 
@@ -280,10 +280,13 @@ export default function App() {
     });
   }
 
+  // The API reads one line as the run of items it may be ("milk, eggs and
+  // bread"), so what comes back is a list however it was typed or dictated.
   async function addGroceryItem(text, section) {
     try {
-      const { item } = await api.addGroceryItem(text, section);
-      setGroceryItems((prev) => [...prev, item]);
+      const { items } = await api.addGroceryItem(text, section);
+      setGroceryItems((prev) => [...prev, ...items]);
+      if (items.length > 1) toast(`${items.length} items added`);
     } catch (e) {
       toast(e.message);
     }
@@ -343,7 +346,7 @@ export default function App() {
   async function addPantryItem(location, text) {
     const added = [];
     let already = 0;
-    for (const line of splitPantryEntries(text)) {
+    for (const line of splitSpokenEntries(text)) {
       try {
         const { item } = await api.addPantryItem(location, line);
         added.push(item);

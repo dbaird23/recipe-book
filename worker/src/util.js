@@ -173,6 +173,19 @@ export function normalizeSpoken(text) {
   return withQty.replace(/^(\d+(?:\.\d+)?\s+[A-Za-z]+)\s+of\s+/i, '$1 ');
 }
 
+/**
+ * Split a run of items into lines: what dictation hands over is one long
+ * sentence: "two cans of black beans, rice and three onions". Splitting on
+ * "and" occasionally cuts an item in half ("bread and butter pickles"), which
+ * is why every item stays editable and removable afterwards.
+ * Mirrored in web/src/util.js.
+ */
+export const splitSpokenEntries = (text) =>
+  String(text ?? '')
+    .split(/[\n,]|\band\b/i)
+    .map((s) => s.trim())
+    .filter(Boolean);
+
 // The count doesn't always come first: plenty of people write the thing they
 // have and then how much of it: "spaghetti 2 bags", "eggs 12". Only read as a
 // count when the line ends there, so "9x13 pan" and "chili powder" are safe.

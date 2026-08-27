@@ -341,8 +341,9 @@ export function normalizeSpoken(text) {
  * sentence: "two cans of black beans, rice and three onions". Splitting on
  * "and" occasionally cuts an item in half ("bread and butter pickles"), which
  * is why every item stays editable and removable afterwards.
+ * Mirrored in worker/src/util.js, which splits a dictated grocery line.
  */
-export const splitPantryEntries = (text) =>
+export const splitSpokenEntries = (text) =>
   String(text ?? '')
     .split(/[\n,]|\band\b/i)
     .map((s) => s.trim())

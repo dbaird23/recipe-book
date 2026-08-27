@@ -412,14 +412,18 @@ const TOOLS = [
     inputSchema: {
       type: 'object',
       properties: {
-        item: { type: 'string', description: 'A whole line, e.g. "2 bags of ice" or "birthday candles"' },
+        item: {
+          type: 'string',
+          description:
+            'A whole line, e.g. "2 bags of ice" or "birthday candles". Several at once are read apart, so "milk, eggs and bread" adds three.',
+        },
         section: SECTION,
       },
       required: ['item'],
     },
     run: async (call, args) => {
-      const { item } = await call('POST', '/api/groceries', { text: args.item, section: args.section });
-      return { added: true, itemId: item.id, text: item.text, section: item.section };
+      const { items } = await call('POST', '/api/groceries', { text: args.item, section: args.section });
+      return { added: items.length, items: items.map((i) => ({ itemId: i.id, text: i.text, section: i.section })) };
     },
   },
 

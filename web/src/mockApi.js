@@ -1,7 +1,7 @@
 // In-browser API for the static demo build (GitHub Pages). Same interface as
 // the real api client, backed by localStorage. Single-player, no server.
 import { DEMO_MY_RECIPES, DEMO_FRIENDS, DEMO_PANTRY } from './demoData.js';
-import { autoNut, countIngredients, cleanNut, parsePantryEntry, grocerySection, GROCERY_SECTIONS, MEAL_SLOTS } from './util.js';
+import { autoNut, countIngredients, cleanNut, parsePantryEntry, splitSpokenEntries, grocerySection, GROCERY_SECTIONS, MEAL_SLOTS } from './util.js';
 
 const KEY = 'recipe-book-demo-v1';
 const uid = () => (crypto.randomUUID ? crypto.randomUUID() : String(Math.random()).slice(2));
@@ -384,13 +384,13 @@ export const mockApi = {
 
   groceries: async () => ({ items: state.groceries || [] }),
   addGroceryItem: async (text, section) => {
-    const clean = String(text || '').trim().slice(0, 100);
-    if (!clean) throw new Error('Type something to add first');
+    const lines = splitSpokenEntries(text).map((t) => t.slice(0, 100)).slice(0, 30);
+    if (!lines.length) throw new Error('Type something to add first');
     const known = GROCERY_SECTIONS.some((s) => s.key === section);
-    const item = { id: uid(), text: clean, section: known ? section : grocerySection(clean) };
-    state.groceries = [...(state.groceries || []), item];
+    const items = lines.map((t) => ({ id: uid(), text: t, section: known ? section : grocerySection(t) }));
+    state.groceries = [...(state.groceries || []), ...items];
     save();
-    return { item };
+    return { item: items[0], items };
   },
   updateGroceryItem: async (id, text, section) => {
     const clean = String(text || '').trim().slice(0, 100);

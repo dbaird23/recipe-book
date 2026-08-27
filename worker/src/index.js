@@ -19,7 +19,7 @@ import {
 } from './oauth.js';
 import {
   HttpError, uid, nowIso, pairKey, json, autoNut, countIngredients, cleanNut, sanitizeRecipeInput, putImage, photoUrl,
-  PANTRY_LOCATIONS, parsePantryEntry, GROCERY_SECTIONS, grocerySection, MEALS,
+  PANTRY_LOCATIONS, parsePantryEntry, GROCERY_SECTIONS, grocerySection, splitSpokenEntries, MEALS,
 } from './util.js';
 
 // ---------- tiny router ----------
@@ -739,20 +739,29 @@ get('/api/groceries', async (ctx) => {
   return json({ items: results.map(groceryJson) });
 }, KEY);
 
+// One line can carry a whole run of items, the way the pantry's does: "milk,
+// eggs and bread" lands as three. The pantry splits in the browser and posts
+// each line, but this splits here as well, because the callers that most need
+// it (Siri, an assistant) only get to make the one call. Each item comes back
+// so a client can drop them all onto the list. `item` is the first of them,
+// kept because a page still open from before a deploy is reading that field.
 post('/api/groceries', async (ctx) => {
   const me = requireUser(ctx);
   const body = await ctx.json();
-  const text = String(body.text ?? '').trim().slice(0, 100);
-  if (!text) throw new HttpError(400, 'Type something to add first');
+  const lines = splitSpokenEntries(body.text).map((t) => t.slice(0, 100)).slice(0, 30);
+  if (!lines.length) throw new HttpError(400, 'Type something to add first');
   const asked = String(body.section || '').trim().toLowerCase();
-  const section = GROCERY_SECTIONS.some((s) => s.key === asked) ? asked : grocerySection(text);
-  const id = uid();
+  const picked = GROCERY_SECTIONS.some((s) => s.key === asked) ? asked : null;
   const now = nowIso();
-  await ctx.db
-    .prepare('INSERT INTO grocery_items (id,user_id,text,section,created_at,updated_at) VALUES (?,?,?,?,?,?)')
-    .bind(id, me.id, text, section, now, now)
-    .run();
-  return json({ item: { id, text, section } });
+  const items = lines.map((text) => ({ id: uid(), text, section: picked || grocerySection(text) }));
+  await ctx.db.batch(
+    items.map((it) =>
+      ctx.db
+        .prepare('INSERT INTO grocery_items (id,user_id,text,section,created_at,updated_at) VALUES (?,?,?,?,?,?)')
+        .bind(it.id, me.id, it.text, it.section, now, now)
+    )
+  );
+  return json({ item: items[0], items });
 }, KEY);
 
 // Reworded rather than re-added: the aisle is worked out again from the new

@@ -54,7 +54,7 @@ export default function SignIn({ config, invite, inviteToken, onSignedIn, onErro
           BASE_URL because the demo build is served from a subpath. Decorative:
           the name is spelled out directly underneath. */}
       <img
-        src={`${import.meta.env.BASE_URL}icon-192.png`}
+        src="/icon-192.png"
         alt=""
         width={124}
         height={124}

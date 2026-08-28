@@ -518,7 +518,7 @@ export function PlanPickerSheet({ dayName, mealLabel, already = 0, recipes, onPi
 }
 
 export function ShareSheet({ recipe, onClose, toast }) {
-  const link = `${location.origin}${import.meta.env.BASE_URL}?r=${recipe.id}`;
+  const link = `${location.origin}/?r=${recipe.id}`;
   async function copy() {
     try {
       await navigator.clipboard.writeText(link);

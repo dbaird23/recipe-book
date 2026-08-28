@@ -47,7 +47,7 @@ export default function Connect({ user, rq, onSignOut }) {
     // top off when there isn't, which is what justify-content would do.
     <div className="screen scroll" style={{ alignItems: 'center', padding: 28, textAlign: 'center' }}>
       <div style={{ margin: 'auto 0', display: 'flex', flexDirection: 'column', alignItems: 'center', width: '100%' }}>
-        <img src={`${import.meta.env.BASE_URL}icon-192.png`} alt="" width={76} height={76} style={{ borderRadius: 18 }} />
+        <img src="/icon-192.png" alt="" width={76} height={76} style={{ borderRadius: 18 }} />
 
         {error && (
           <>

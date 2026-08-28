@@ -123,7 +123,7 @@ export default function App() {
           } catch {
             /* recipe gone or not visible */
           }
-          history.replaceState(null, '', import.meta.env.BASE_URL);
+          history.replaceState(null, '', '/');
         }
       } catch {
         /* not signed in */
@@ -134,7 +134,7 @@ export default function App() {
 
   async function handleSignedIn(u) {
     setUser(u);
-    if (inviteToken) history.replaceState(null, '', import.meta.env.BASE_URL);
+    if (inviteToken) history.replaceState(null, '', '/');
     if (!connectRq) await loadAll();
   }
 

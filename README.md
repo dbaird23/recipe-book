@@ -8,9 +8,6 @@ Built from the Claude Design prototype (`Recipe Book.dc.html`).
 **Live app:** [recipe-book.dbaird23.workers.dev](https://recipe-book.dbaird23.workers.dev):
 invite only, running on Cloudflare Workers + D1 + R2.
 
-**[▶ Try the demo](https://dbaird23.github.io/recipe-book/)** is a static build on GitHub Pages
-that runs entirely in your browser with sample data (single-player; changes stay in your browser).
-
 ## Features
 
 - **My Recipes**: list or grid view, search, meal/tag filters, newest/A–Z sort
@@ -220,7 +217,7 @@ passwordless dev sign-in back on localhost, create `worker/.dev.vars` (git-ignor
 GOOGLE_CLIENT_ID=""
 ```
 
-Sign in once (dev mode, no password), then optionally load the demo friends and starter recipes:
+Sign in once (dev mode, no password), then optionally load the sample friends and starter recipes:
 
 ```bash
 npm run seed
@@ -228,9 +225,6 @@ npm run seed
 
 The first account to sign in becomes the group admin. Everyone else needs an invite link
 (Friends → + Invite).
-
-To run the front end on its own against the sample data (the same build that's on GitHub Pages: no
-Worker, no database, no sign-in), use `npm run demo -w web` and open http://localhost:5175.
 
 ## Deploy
 
@@ -262,7 +256,7 @@ disables the dev sign-in fallback.
 | Command | What it does |
 |---|---|
 | `npm run deploy` | Build the SPA and deploy the Worker |
-| `npm run seed -- --remote` | Seed demo data into the deployed database |
+| `npm run seed -- --remote` | Seed sample data into the deployed database |
 | `npm run tail` | Live-tail production logs |
 | `npm run migrate -w worker` | Apply new migrations to production |
 | `npm run migrate:local -w worker` | Apply new migrations to the local dev database |

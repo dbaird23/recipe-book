@@ -72,6 +72,11 @@ export const api = {
   removeFriend: (id) => request(`/api/friends/${id}`, { method: 'DELETE' }),
 
   importUrl: (url) => request('/api/import', { method: 'POST', body: { url } }),
+  scanPhotos: (files) => {
+    const fd = new FormData();
+    for (const f of files) fd.append('photo', f);
+    return request('/api/scan', { method: 'POST', body: fd });
+  },
 
   plan: (start, end) => request(`/api/plan?start=${start}&end=${end}`),
   setPlanDay: (date, body) => request(`/api/plan/${date}`, { method: 'PUT', body }),

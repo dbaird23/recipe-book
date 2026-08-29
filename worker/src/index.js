@@ -8,6 +8,7 @@ import {
   currentUser,
 } from './auth.js';
 import { importFromUrl } from './importer.js';
+import { scanFromPhotos } from './scanner.js';
 import { bearerToken, userForToken, touchApiKey, listApiKeys, createApiKey, revokeApiKey } from './apikeys.js';
 import { handleMcp } from './mcp.js';
 import {
@@ -152,6 +153,9 @@ get('/api/config', (ctx) =>
     googleEnabled: !!ctx.env.GOOGLE_CLIENT_ID,
     devLoginEnabled: !ctx.env.GOOGLE_CLIENT_ID,
     googleClientId: ctx.env.GOOGLE_CLIENT_ID || null,
+    // Whether the book can read a recipe off a photograph. Without a key the
+    // camera is hidden rather than offered and then apologised for.
+    scanEnabled: !!ctx.env.ANTHROPIC_API_KEY,
   })
 );
 
@@ -806,6 +810,17 @@ post('/api/import', async (ctx) => {
   return json({ draft: await importFromUrl(url) });
 }, KEY);
 
+// The same draft, read off a photograph instead of a page. The photos
+// themselves are never stored here: the ones worth keeping are uploaded from
+// the review screen with every other photo, so a scan the cook abandons
+// leaves nothing behind.
+post('/api/scan', async (ctx) => {
+  requireUser(ctx);
+  const form = await ctx.request.formData();
+  const photos = form.getAll('photo').filter((f) => typeof f?.arrayBuffer === 'function');
+  return json({ draft: await scanFromPhotos(ctx.env, photos) });
+}, KEY);
+
 // ---------- API keys ----------
 //
 // Cookie-only, all three: a key must never be able to mint or list keys, or
@@ -976,9 +991,15 @@ on('HEAD', '/invite/:token', shell, PUBLIC);
  * Run one of our own API routes in-process, as whoever `base` is signed in as.
  * The MCP tools go through here so they share the web app's exact permission
  * checks and response shapes instead of reaching into the database themselves.
+ *
+ * A plain object is handed to the route through `ctx.json`, which is all most
+ * of them read. A FormData body is built into a real request instead, because
+ * the routes that take uploads reach for `ctx.request.formData()` and a
+ * shortcut would leave them holding nothing.
  */
 async function callApi(base, method, path, body) {
   const url = new URL(path, new URL(base.request.url).origin);
+  const upload = body instanceof FormData;
   for (const route of routes) {
     if (route.method !== method) continue;
     const match = route.pattern.exec(url);
@@ -987,8 +1008,8 @@ async function callApi(base, method, path, body) {
     const res = await route.handler({
       ...base,
       params: match.pathname.groups,
-      request: new Request(url, { method }),
-      json: async () => body || {},
+      request: new Request(url, upload ? { method, body } : { method }),
+      json: async () => (upload ? {} : body || {}),
     });
     return res.json();
   }

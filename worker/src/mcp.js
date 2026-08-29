@@ -16,7 +16,7 @@
 // between the two.
 import {
   HttpError, json, PANTRY_LOCATIONS, pantrySkip, GROCERY_SECTIONS, grocerySection, MEALS,
-  isIngredientHeading, countIngredients,
+  isIngredientHeading, countIngredients, sniffImageType,
 } from './util.js';
 
 const PROTOCOL_VERSION = '2025-06-18';
@@ -144,6 +144,30 @@ function matches(recipe, q) {
   return q.split(/\s+/).every((word) => haystack.includes(word));
 }
 
+/**
+ * One photo, as an assistant is able to send it: base64, or the data: URL it
+ * probably already has it in. The declared media type is ignored in favour of
+ * the bytes, which can't be mislabelled, and the result is the same File the
+ * browser would have uploaded so the scan route can't tell the two apart.
+ */
+function photoFile(value, index) {
+  const which = `Photo ${index + 1}`;
+  if (typeof value !== 'string') throw new HttpError(400, `${which} isn’t base64 image data`);
+  // Both "data:image/jpeg;base64,…" and the bare payload, minus the line
+  // breaks that wrapping a long string tends to leave in it.
+  const payload = value.replace(/^data:[^,]*,/, '').replace(/\s+/g, '');
+  let bytes;
+  try {
+    const binary = atob(payload);
+    bytes = Uint8Array.from(binary, (ch) => ch.charCodeAt(0));
+  } catch {
+    throw new HttpError(400, `${which} isn’t valid base64`);
+  }
+  const type = sniffImageType(bytes);
+  if (!type) throw new HttpError(400, `${which} isn’t a jpeg, png, webp or gif`);
+  return new File([bytes], `photo-${index + 1}`, { type });
+}
+
 /** The importer speaks its own draft dialect (strings, newline-joined). */
 const draftToRecipe = (d) => ({
   title: d.title,
@@ -263,6 +287,42 @@ const TOOLS = [
       const { draft } = await call('POST', '/api/import', { url: args.url });
       const body = draftToRecipe(draft);
       if (!args.save) return { saved: false, author: draft.author || undefined, recipe: body };
+      const { recipe } = await call('POST', '/api/recipes', body);
+      return { saved: true, ...detail(recipe) };
+    },
+  },
+
+  {
+    name: 'read_recipe_from_photo',
+    title: 'Read a recipe from a photo',
+    description:
+      'Transcribe a recipe from a photograph of it: a cookbook page, a handwritten card, a clipping, a screenshot. ' +
+      'Returns the recipe as read; pass save: true to add it to the book straight away, or show it to the member first and then call create_recipe. ' +
+      'Anything the photo doesn’t say is left blank rather than guessed at, and a quantity that couldn’t be read is left out entirely, so it is worth reading back the times, the servings and anything that looks short before saving. ' +
+      'The photo itself is not kept with the recipe; it is only read.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        photos: {
+          type: 'array',
+          items: { type: 'string' },
+          description:
+            'The photo as base64, or as a data: URL. Up to 4 photos of ONE recipe, in reading order, for a recipe that runs over the page — not 4 different recipes. JPEG, PNG, WebP or GIF.',
+          minItems: 1,
+          maxItems: 4,
+        },
+        save: { type: 'boolean', description: 'Add it to the book immediately. Defaults to false.' },
+      },
+      required: ['photos'],
+    },
+    run: async (call, args) => {
+      const photos = [].concat(args.photos ?? []);
+      if (!photos.length) throw new HttpError(400, 'Send at least one photo');
+      const form = new FormData();
+      photos.forEach((photo, i) => form.append('photo', photoFile(photo, i)));
+      const { draft } = await call('POST', '/api/scan', form);
+      const body = draftToRecipe(draft);
+      if (!args.save) return { saved: false, recipe: body };
       const { recipe } = await call('POST', '/api/recipes', body);
       return { saved: true, ...detail(recipe) };
     },

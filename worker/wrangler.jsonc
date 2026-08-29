@@ -3,6 +3,9 @@
   "name": "recipe-book",
   "main": "src/index.js",
   "compatibility_date": "2026-08-01",
+  // The Anthropic SDK, which reads a recipe off a photograph, reaches for a
+  // handful of Node built-ins on the way in.
+  "compatibility_flags": ["nodejs_compat"],
 
   // The built SPA. "/" is served straight from the asset store, so the ordinary
   // way in never wakes the Worker.

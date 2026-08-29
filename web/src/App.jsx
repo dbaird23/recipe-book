@@ -93,7 +93,7 @@ export default function App() {
   // Boot: config, invite path, session, deep link
   useEffect(() => {
     (async () => {
-      const cfg = await api.config().catch(() => ({ googleEnabled: false, devLoginEnabled: true, googleClientId: null }));
+      const cfg = await api.config().catch(() => ({ googleEnabled: false, devLoginEnabled: true, googleClientId: null, scanEnabled: false }));
       setConfig(cfg);
 
       const inviteMatch = location.pathname.match(/^\/invite\/([a-f0-9]+)$/);
@@ -717,6 +717,7 @@ export default function App() {
           onCancel={() => setScreen('home')}
           onDraft={(d) => { setDraft(d); setScreen('add2'); }}
           toast={toast}
+          canScan={config.scanEnabled}
         />
       )}
 

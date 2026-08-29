@@ -1,12 +1,18 @@
 import { useRef, useState } from 'react';
 import { api } from '../api.js';
 import { ChipToggle } from '../components.jsx';
-import { MEALS, TAGS, SAMPLE_PASTE, parseText } from '../util.js';
+import { MEALS, TAGS, SAMPLE_PASTE, parseText, readableCopy } from '../util.js';
 
-export function AddStep1({ onCancel, onDraft, toast }) {
+// The Worker takes no more than this in one scan, and the wording below says so.
+const MAX_SCAN_PHOTOS = 4;
+
+export function AddStep1({ onCancel, onDraft, toast, canScan = false }) {
   const [importUrl, setImportUrl] = useState('');
   const [importing, setImporting] = useState(false);
   const [pasteText, setPasteText] = useState('');
+  const [scanning, setScanning] = useState(false);
+  const cameraInput = useRef(null);
+  const photoInput = useRef(null);
 
   async function runImport() {
     const u = importUrl.trim();
@@ -24,6 +30,22 @@ export function AddStep1({ onCancel, onDraft, toast }) {
       toast(e.message);
     } finally {
       setImporting(false);
+    }
+  }
+
+  async function runScan(picked) {
+    const photos = Array.from(picked).slice(0, MAX_SCAN_PHOTOS);
+    if (!photos.length || scanning) return;
+    setScanning(true);
+    try {
+      // Read from a copy sized for legibility; keep the originals for the book
+      const { draft } = await api.scanPhotos(await Promise.all(photos.map(readableCopy)));
+      onDraft({ ...draft, tags: [], photoUrls: [], photoFiles: photos });
+      toast('Recipe read from your photo');
+    } catch (e) {
+      toast(e.message);
+    } finally {
+      setScanning(false);
     }
   }
 
@@ -65,6 +87,33 @@ export function AddStep1({ onCancel, onDraft, toast }) {
         <div style={{ fontSize: 12, color: 'var(--faint)', marginTop: 6, lineHeight: 1.4 }}>
           Pulls in the photos, ingredients, directions, notes, nutrition, and the original creator.
         </div>
+
+        {canScan && (
+          <>
+            <div className="divider-row">
+              <div />
+              <span>or photograph it</span>
+              <div />
+            </div>
+            <div style={{ display: 'flex', gap: 10 }}>
+              <button className="btn-primary" style={{ flex: 1, width: 'auto', fontSize: 14.5 }} onClick={() => cameraInput.current?.click()} disabled={scanning}>
+                {scanning ? 'Reading the photo…' : 'Take a photo'}
+              </button>
+              <button className="btn-secondary" style={{ flex: 1 }} onClick={() => photoInput.current?.click()} disabled={scanning}>
+                Choose photos
+              </button>
+            </div>
+            <div style={{ fontSize: 12, color: 'var(--faint)', marginTop: 6, lineHeight: 1.4 }}>
+              A cookbook page, a handwritten card, a clipping. Lay it flat and get the whole recipe in frame &mdash; up to{' '}
+              {MAX_SCAN_PHOTOS} photos if it runs over the page.
+            </div>
+            {/* Two inputs, because a phone only offers the camera when the
+                picker asks for it, and only offers the library when it doesn't */}
+            <input ref={cameraInput} type="file" accept="image/*" capture="environment" hidden onChange={(e) => { runScan(e.target.files); e.target.value = ''; }} />
+            <input ref={photoInput} type="file" accept="image/*" multiple hidden onChange={(e) => { runScan(e.target.files); e.target.value = ''; }} />
+          </>
+        )}
+
         <div className="divider-row">
           <div />
           <span>or paste the text</span>
@@ -99,7 +148,8 @@ export function AddStep1({ onCancel, onDraft, toast }) {
 
 export function AddStep2({ draft: initial, editing, knownTags = [], onBack, onSave, onDelete }) {
   const [d, setD] = useState(initial);
-  const [files, setFiles] = useState([]);
+  // A recipe scanned from a photo arrives with that photo already picked
+  const [files, setFiles] = useState(initial.photoFiles || []);
   const [busy, setBusy] = useState(false);
   const [newTag, setNewTag] = useState('');
   const fileInput = useRef(null);

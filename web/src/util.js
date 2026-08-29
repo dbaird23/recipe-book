@@ -682,3 +682,37 @@ export function sortRecipes(list, sort) {
   }
   return list;
 }
+
+// ---------- photographing a recipe ----------
+
+// Wide enough that small print survives — a page of ingredients is mostly
+// 10pt type — and small enough that a phone on a kitchen wifi doesn't spend a
+// minute uploading twelve megapixels of tablecloth.
+const SCAN_EDGE = 1600;
+
+/**
+ * A copy of a photo sized for reading rather than for keeping. The original
+ * File is untouched and is what gets saved with the recipe; this is only what
+ * goes up to be transcribed.
+ *
+ * A browser that can't do the work — no canvas, a HEIC the decoder won't take —
+ * gets the original back, and the Worker turns it away if it's too big.
+ */
+export async function readableCopy(file) {
+  try {
+    const bitmap = await createImageBitmap(file);
+    const scale = Math.min(1, SCAN_EDGE / Math.max(bitmap.width, bitmap.height));
+    const canvas = document.createElement('canvas');
+    canvas.width = Math.round(bitmap.width * scale);
+    canvas.height = Math.round(bitmap.height * scale);
+    const ctx = canvas.getContext('2d');
+    ctx.imageSmoothingQuality = 'high';
+    ctx.drawImage(bitmap, 0, 0, canvas.width, canvas.height);
+    bitmap.close?.();
+    const blob = await new Promise((r) => canvas.toBlob(r, 'image/jpeg', 0.85));
+    if (!blob) return file;
+    return new File([blob], 'scan.jpg', { type: 'image/jpeg' });
+  } catch {
+    return file;
+  }
+}

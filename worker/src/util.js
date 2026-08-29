@@ -269,6 +269,23 @@ const IMAGE_EXT = {
   'image/gif': 'gif',
 };
 
+/**
+ * The image format a run of bytes actually is, read from its first few bytes.
+ * An assistant handing us a picture over MCP labels it however it likes, or
+ * not at all, and the bytes are the only part of that which can't be wrong.
+ * Null when it isn't one of the four formats we take.
+ */
+export function sniffImageType(bytes) {
+  const b = bytes;
+  if (b.length > 3 && b[0] === 0xff && b[1] === 0xd8 && b[2] === 0xff) return 'image/jpeg';
+  if (b.length > 8 && b[0] === 0x89 && b[1] === 0x50 && b[2] === 0x4e && b[3] === 0x47) return 'image/png';
+  if (b.length > 6 && b[0] === 0x47 && b[1] === 0x49 && b[2] === 0x46 && b[3] === 0x38) return 'image/gif';
+  // "RIFF" .... "WEBP"
+  if (b.length > 12 && b[0] === 0x52 && b[1] === 0x49 && b[2] === 0x46 && b[3] === 0x46
+      && b[8] === 0x57 && b[9] === 0x45 && b[10] === 0x42 && b[11] === 0x50) return 'image/webp';
+  return null;
+}
+
 /** Store an uploaded image in R2 and return its object key. */
 export async function putImage(env, file) {
   if (!file || typeof file.arrayBuffer !== 'function') throw new HttpError(400, 'No photo uploaded');

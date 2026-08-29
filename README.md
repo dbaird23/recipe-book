@@ -11,9 +11,16 @@ invite only, running on Cloudflare Workers + D1 + R2.
 ## Features
 
 - **My Recipes**: list or grid view, search, meal/tag filters, newest/A–Z sort
-- **Add recipes three ways**: import from a URL (reads the site's schema.org recipe data for times,
+- **Add recipes four ways**: import from a URL (reads the site's schema.org recipe data for times,
   nutrition and creator credit, and the page itself for the cook's notes and the step photos through
-  the post), paste the text and let it parse, or start from scratch
+  the post), **photograph it** (see below), paste the text and let it parse, or start from scratch
+- **Photograph a recipe**: point the camera at a cookbook page, a handwritten card or a clipping and
+  it comes back as a filled-in draft — title, times, ingredients (sections and all), steps, notes, and
+  the printed nutrition if there is any. Up to four photos when the recipe runs over the page, read as
+  one recipe. The photo you took is kept as the recipe's photo unless you drop it on the review screen.
+  What can't be read is left blank rather than guessed at, and every draft lands on that review screen
+  before it's saved, because a misread quantity looks exactly like a right one once it's in the book.
+  An AI assistant can do the same through the `read_recipe_from_photo` MCP tool
 - **Recipe pages**: photo gallery, tap-to-check ingredients, numbered directions, numbered notes,
   nutrition per serving (saying what a serving actually is, "5 meatballs with sauce", when the recipe
   does), comments with photos, and a **1×–4× servings multiplier** that rescales ingredient quantities
@@ -57,7 +64,8 @@ invite only, running on Cloudflare Workers + D1 + R2.
 
 - `web/`: React 19 + Vite single-page app (mobile-first, matches the design system)
 - `worker/`: Cloudflare Worker API: **D1** (SQLite) for data, **R2** for photos, session-cookie auth
-  with Google ID tokens verified via Web Crypto, and a schema.org/JSON-LD recipe importer
+  with Google ID tokens verified via Web Crypto, a schema.org/JSON-LD recipe importer, and Claude
+  (`@anthropic-ai/sdk`) for reading a recipe off a photograph
 
 The Worker also serves the built SPA, so the whole app is one deployment on one origin.
 
@@ -160,6 +168,7 @@ key, which is the one moment the token is in hand.
 | `create_recipe` | Add a recipe to your book |
 | `update_recipe` | Change a recipe you own; send only the fields you want changed |
 | `import_recipe_from_url` | Parse a recipe off a web page, optionally saving it straight away |
+| `read_recipe_from_photo` | Transcribe a recipe from a photo of a page or card (send it as base64), optionally saving it straight away |
 | `get_meal_plan` | What's planned to eat across a date range: breakfast, lunch and dinner |
 | `set_meal_plan_day` | Set or clear any of one day's meals (one thing or several) and its note |
 | `get_pantry` | What's already in the kitchen: pantry, fridge and freezer |
@@ -172,6 +181,13 @@ key, which is the one moment the token is in hand.
 
 The tools call the same route handlers the web app does, so permissions and validation can't drift
 between the two.
+
+`read_recipe_from_photo` needs `ANTHROPIC_API_KEY` set (see [Turn on photographing
+recipes](#turn-on-photographing-recipes)); without it the tool is still listed but says the book
+isn't set up for it. Send the picture as base64 or as a `data:` URL — the format is read from the
+bytes, so a wrong label does no harm — and up to four photos of *one* recipe that runs over the page.
+The photo is only read, never kept with the recipe: adding photos to a recipe stays off-limits to
+API keys, as it always has been.
 
 ### REST
 
@@ -217,6 +233,14 @@ passwordless dev sign-in back on localhost, create `worker/.dev.vars` (git-ignor
 GOOGLE_CLIENT_ID=""
 ```
 
+To photograph recipes locally, add your Anthropic API key to the same file:
+
+```
+ANTHROPIC_API_KEY=sk-ant-…
+```
+
+Without it the camera is simply hidden — the link, paste and from-scratch routes are unaffected.
+
 Sign in once (dev mode, no password), then optionally load the sample friends and starter recipes:
 
 ```bash
@@ -240,6 +264,19 @@ npm run deploy         # builds the SPA and deploys the Worker
 `npm run setup` writes the new `database_id` into `worker/wrangler.jsonc`. Commit that change.
 
 Your app is live at `https://recipe-book.<your-subdomain>.workers.dev`.
+
+### Turn on photographing recipes
+
+Reading a recipe off a photograph asks Claude to transcribe it, so it needs an API key from
+[console.anthropic.com](https://console.anthropic.com):
+
+```bash
+npx wrangler secret put ANTHROPIC_API_KEY   # from worker/
+```
+
+It's a secret rather than a `vars` entry, so it never lands in the config file or the client bundle.
+`/api/config` reports only whether one is set, and the camera appears only when it is. A scan costs
+a fraction of a cent; nothing else in the app calls the API.
 
 ### Turn on Google sign-in
 

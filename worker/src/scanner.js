@@ -101,6 +101,18 @@ function base64(buffer) {
   return btoa(binary);
 }
 
+/**
+ * The two money failures that don't arrive as a 402. A spend limit someone set
+ * on the account comes back as an ordinary 400, and the usage tier's own
+ * monthly cap as a 429 — told apart from real rate limiting by the missing
+ * retry-after, since a cap doesn't clear on its own the way a burst does.
+ * The 400 has no error type of its own to go on, so its wording is all there is.
+ */
+function isSpendLimit(e) {
+  if (e?.status === 429) return !e.headers?.get?.('retry-after');
+  return e?.status === 400 && /spend limit|credit balance/i.test(e?.message || '');
+}
+
 const lines = (v) => (Array.isArray(v) ? v : []).map((s) => String(s ?? '').trim()).filter(Boolean);
 
 /**
@@ -153,7 +165,15 @@ export async function scanFromPhotos(env, photos) {
     });
   } catch (e) {
     // The cook gets one sentence they can act on; the detail goes to the log.
-    console.error('recipe scan failed:', e?.status || '', e?.message || e);
+    console.error('recipe scan failed:', e?.status || '', e?.type || '', e?.message || e);
+    // Money, before anything else, because it's the failure most likely to be
+    // mistaken for a bad photo. An empty balance or a payment problem is a 402
+    // carrying billing_error; the two spend limits arrive wearing other codes.
+    // None of them are the cook's to fix and none improve by trying again, so
+    // they say so instead of sending someone back to re-photograph the page.
+    if (e?.type === 'billing_error' || e?.status === 402 || isSpendLimit(e)) {
+      throw new HttpError(503, 'Reading photos has run out of credit. Tell whoever runs this book.');
+    }
     if (e instanceof Anthropic.AuthenticationError || e instanceof Anthropic.PermissionDeniedError) {
       throw new HttpError(503, 'Reading a recipe from a photo isn’t set up properly. Tell whoever runs this book.');
     }

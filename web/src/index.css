@@ -39,8 +39,14 @@ button { color: inherit; }
    scrolls inside its own .scroll box. That's what keeps the header above and
    the tab bar (absolute, bottom:0 of .app) pinned while content moves. Using
    min-height here instead lets .app grow past the viewport, which pushes the
-   tab bar below the fold and scrolls the header away. */
-#root { display: flex; justify-content: center; height: 100dvh; }
+   tab bar below the fold and scrolls the header away.
+
+   Two declarations, not one: a browser that doesn't know dvh drops that line
+   whole and is left with no height at all, which is the same failure by a
+   different route. vh is the floor every browser understands, and dvh wins
+   where it's understood. On the home screen there's no address bar coming and
+   going, so the two are the same number anyway. */
+#root { display: flex; justify-content: center; height: 100vh; height: 100dvh; }
 .app {
   position: relative;
   width: 100%;

@@ -270,9 +270,9 @@ export function ApiKeysSheet({ onClose, toast }) {
           It's first because it's the one that needs no key at all. */}
       <div className="section-label" style={{ fontSize: 11, margin: '18px 0 6px' }}>ChatGPT</div>
       <div className="sheet-sub" style={{ marginTop: 0 }}>
-        In ChatGPT, go to Settings &rarr; Apps &amp; Connectors &rarr; Advanced &rarr; Developer mode, then{' '}
-        <b>Create</b> a connector with this address. It&rsquo;ll open Pinch to ask you to sign in and say yes.
-        No key needed.
+        On the web, turn on Settings &rarr; Security and login &rarr; <b>Developer mode</b>. Then open{' '}
+        <b>Plugins</b>, press <b>+</b>, and give it this address. It&rsquo;ll open Pinch to ask you to sign in and
+        say yes; the new app waits under <b>Drafts</b>. No key needed.
       </div>
       <div style={{ ...CODE_BOX, marginTop: 10, color: 'var(--ink)' }}>{mcpUrl}</div>
       <button className="btn-secondary" style={{ marginTop: 10, width: '100%' }} onClick={() => copy(mcpUrl, 'Address')}>

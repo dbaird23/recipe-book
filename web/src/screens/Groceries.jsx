@@ -10,7 +10,8 @@ const DELETE_W = 84;
  * A row you can swipe left to delete. The button sits underneath and is
  * uncovered by the drag rather than sliding in, so a half-swipe reads as "not
  * yet" instead of "nearly". Dragging is suppressed once the gesture looks
- * vertical, so the list still scrolls normally under a thumb.
+ * vertical, so the list still scrolls normally under a thumb; the list itself
+ * is what tells the browser so, once, rather than every row saying it again.
  */
 function SwipeRow({ onDelete, deleteLabel, children }) {
   const [dx, setDx] = useState(0);
@@ -61,10 +62,15 @@ function SwipeRow({ onDelete, deleteLabel, children }) {
         onPointerMove={move}
         onPointerUp={up}
         onPointerCancel={up}
-        // Let the browser own vertical scrolling; we only ever take over the x axis
+        // A row sitting still is a plain block: no transform on it, and nothing
+        // saying anything special about touch. Only the one under a thumb is
+        // moved. Stamping all forty with a transform inside a clipped, rounded
+        // card leaves iOS a pile of layers to rebuild whenever a row goes away,
+        // and what it drops on the way is the list's own scrolling.
         style={{
-          position: 'relative', background: 'var(--card)', touchAction: 'pan-y', padding: '0 12px',
-          transform: `translateX(${dx}px)`, transition: drag.current ? 'none' : 'transform .18s ease',
+          position: 'relative', background: 'var(--card)', padding: '0 12px',
+          transform: dx ? `translateX(${dx}px)` : undefined,
+          transition: drag.current ? 'none' : 'transform .18s ease',
         }}
         // A swipe shouldn't also open the line for editing
         onClickCapture={(e) => { if (dx) { e.stopPropagation(); setDx(0); } }}
@@ -276,7 +282,14 @@ export default function Groceries({
 
       <AddRow onAdd={onAdd} />
 
-      <div className="scroll" style={{ padding: '2px 20px 100px', display: 'flex', flexDirection: 'column', gap: 14 }}>
+      {/* Vertical is the browser's and horizontal is the rows', said once here
+          rather than on each row: a row that says it and is then ticked off or
+          deleted leaves iOS holding a note about an element that no longer
+          exists, and the list stops scrolling until you leave and come back. */}
+      <div
+        className="scroll"
+        style={{ padding: '2px 20px 100px', display: 'flex', flexDirection: 'column', gap: 14, touchAction: 'pan-y' }}
+      >
         {left.map((s) => {
           const shut = !!collapsed[s.key];
           return (

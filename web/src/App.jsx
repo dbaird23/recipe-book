@@ -11,7 +11,7 @@ import Pantry from './screens/Pantry.jsx';
 import Groceries from './screens/Groceries.jsx';
 import Connect from './screens/Connect.jsx';
 import { ProfileSheet, ApiKeysSheet, FilterSheet, ShareSheet, InviteSheet, RemoveFriendSheet, PlanPickerSheet, PlanRecipeSheet } from './sheets.jsx';
-import { matchesFilters, customTagsFrom, nextSort, buildGroceryList, splitSpokenEntries, MEAL_SLOTS, mondayOf, addDays, isoDate } from './util.js';
+import { matchesFilters, customTagsFrom, nextSort, groupGroceries, splitSpokenEntries, MEAL_SLOTS, mondayOf, addDays, isoDate } from './util.js';
 
 const EMPTY_FILTERS = { selMeals: [], selTags: [], query: '', rating: 0 };
 
@@ -54,16 +54,16 @@ export default function App() {
   // meal plan
   const [weekOffset, setWeekOffset] = useState(0);
   const [planEntries, setPlanEntries] = useState([]);
+  const [resumedAt, setResumedAt] = useState(0);
   const [picking, setPicking] = useState(null); // { day, slot } while the picker is open
   // Ticks and deletions stay in the browser: they're a scratchpad for one trip
   // round the shop, not something worth a round trip while you're standing in
   // an aisle. Both are filed under the week they belong to, so last week's
   // shop doesn't quietly hide this week's flour.
-  const [groceryChecked, setGroceryChecked] = useState(() => readStore('rb-grocery-v3'));
-  const [groceryHidden, setGroceryHidden] = useState(() => readStore('rb-grocery-hidden-v1'));
+  const [groceryChecked, setGroceryChecked] = useState(() => readStore('rb-grocery-v4'));
+  const [shopping, setShopping] = useState(false);
   // Lines reworded for this week's shop. A recipe's wording belongs to the
   // recipe, so the new words are kept here rather than written back to it.
-  const [groceryNames, setGroceryNames] = useState(() => readStore('rb-grocery-names-v1'));
   // pantry: what's already in the kitchen, so the grocery list can skip it
   const [pantry, setPantry] = useState([]);
   // groceries added by hand, alongside whatever the week's plan calls for
@@ -89,6 +89,23 @@ export default function App() {
     setGroceryItems(list.items);
     return mine.recipes;
   }, []);
+
+  // A phone doesn't reload the app when you come back to it: on the home
+  // screen it's resumed exactly as it was left, so anything that arrived while
+  // it was away -- Siri putting something on the list, an assistant, another
+  // device -- would go unseen until it was killed and opened again. Coming
+  // back to the front is the moment to ask again. Quietly: a refresh that
+  // fails is worth no toast when nothing was asked for.
+  useEffect(() => {
+    if (!user) return;
+    const onShow = () => {
+      if (document.visibilityState !== 'visible') return;
+      loadAll().catch(() => {});
+      setResumedAt(Date.now());
+    };
+    document.addEventListener('visibilitychange', onShow);
+    return () => document.removeEventListener('visibilitychange', onShow);
+  }, [user, loadAll]);
 
   // Boot: config, invite path, session, deep link
   useEffect(() => {
@@ -175,7 +192,7 @@ export default function App() {
       .then(({ entries }) => { if (!stale) setPlanEntries(entries); })
       .catch((e) => toast(e.message));
     return () => { stale = true; };
-  }, [user, screen, weekStart, weekEnd]);
+  }, [user, screen, weekStart, weekEnd, resumedAt]);
 
   async function savePlanDay(date, body) {
     try {
@@ -247,35 +264,21 @@ export default function App() {
     ...allFriendRecipes.map((r) => ({ ...r, ownerLabel: r.ownerName })),
   ];
 
-  // The week's shopping, by aisle: the plan's ingredients minus whatever the
-  // pantry already covers, plus anything added by hand.
-  const grocery = buildGroceryList({
-    entries: planEntries,
-    weekOffset,
-    pantry,
-    manual: groceryItems,
-    hidden: Object.keys(groceryHidden).filter((k) => k.startsWith(`${weekStart}::`)).map((k) => k.slice(weekStart.length + 2)),
-    renamed: Object.fromEntries(
-      Object.entries(groceryNames)
-        .filter(([k]) => k.startsWith(`${weekStart}::`))
-        .map(([k, v]) => [k.slice(weekStart.length + 2), v])
-    ),
-  });
+  // The shopping, by aisle. One list rather than a week's: what the plan calls
+  // for is put on it from the plan screen, so nothing here is worked out and
+  // nothing changes under you between looking and shopping.
+  const grocery = groupGroceries(groceryItems);
 
-  // One store for every week, so a key names the week it belongs to
-  const weekKey = (key) => `${weekStart}::${key}`;
-  const checkedThisWeek = Object.fromEntries(
-    Object.keys(groceryChecked)
-      .filter((k) => k.startsWith(`${weekStart}::`))
-      .map((k) => [k.slice(weekStart.length + 2), true])
-  );
-
+  // Ticks are the one thing that stays in the browser: they're a scratchpad for
+  // one trip round the shop, not worth a round trip while you're standing in an
+  // aisle with one bar of signal. Keyed by the row's id, and cleared for good at
+  // the end of a shop.
   function toggleGroceryChecked(key) {
     setGroceryChecked((prev) => {
       const next = { ...prev };
-      if (next[weekKey(key)]) delete next[weekKey(key)];
-      else next[weekKey(key)] = true;
-      localStorage.setItem('rb-grocery-v3', JSON.stringify(next));
+      if (next[key]) delete next[key];
+      else next[key] = true;
+      localStorage.setItem('rb-grocery-v4', JSON.stringify(next));
       return next;
     });
   }
@@ -292,53 +295,67 @@ export default function App() {
     }
   }
 
-  // Something added by hand is genuinely deleted; an ingredient the plan asked
-  // for is only hidden for this week, since the recipe still calls for it.
   async function removeGroceryItem(item) {
-    if (!item.manualId) {
-      setGroceryHidden((prev) => {
-        const next = { ...prev, [weekKey(item.key)]: true };
-        localStorage.setItem('rb-grocery-hidden-v1', JSON.stringify(next));
-        return next;
-      });
-      toast(`${item.label} off this week’s list`);
-      return;
-    }
     try {
-      await api.removeGroceryItem(item.manualId);
-      setGroceryItems((prev) => prev.filter((x) => x.id !== item.manualId));
+      await api.removeGroceryItem(item.id);
+      setGroceryItems((prev) => prev.filter((x) => x.id !== item.id));
     } catch (e) {
       toast(e.message);
     }
   }
 
-  // Something added by hand is genuinely reworded, since those words are the
-  // only ones it has. An ingredient the plan asked for keeps the recipe's
-  // wording and gets yours laid over it for this week's shop.
+  // Reworded for good: a line reads the way you last wrote it, whether it was
+  // typed or came off a recipe whose wording suits the kitchen better than the
+  // shop ("2 lb chicken thighs, boneless" is not how you buy them).
   async function renameGroceryItem(item, text) {
-    if (!item.manualId) {
-      setGroceryNames((prev) => {
-        const next = { ...prev, [weekKey(item.key)]: text };
-        localStorage.setItem('rb-grocery-names-v1', JSON.stringify(next));
-        return next;
-      });
-      return;
-    }
     try {
-      const { item: saved } = await api.updateGroceryItem(item.manualId, text);
+      const { item: saved } = await api.updateGroceryItem(item.id, text);
       setGroceryItems((prev) => prev.map((x) => (x.id === saved.id ? saved : x)));
     } catch (e) {
       toast(e.message);
     }
   }
 
-  function restoreGroceryItem(key) {
-    setGroceryHidden((prev) => {
-      const next = { ...prev };
-      delete next[weekKey(key)];
-      localStorage.setItem('rb-grocery-hidden-v1', JSON.stringify(next));
-      return next;
-    });
+  // The planning is done: everything the week calls for goes on the list, minus
+  // what the kitchen already has and what the list already carries.
+  async function addPlanToGroceries() {
+    if (shopping) return;
+    setShopping(true);
+    try {
+      const { items, alreadyOn, skipped } = await api.addPlanToGroceries(weekStart, weekEnd);
+      setGroceryItems((prev) => [...prev, ...items]);
+      const also = [
+        alreadyOn ? `${alreadyOn} already on it` : null,
+        skipped.length ? `${skipped.length} in your kitchen` : null,
+      ].filter(Boolean);
+      toast(
+        items.length
+          ? `${items.length} added${also.length ? ` · ${also.join(' · ')}` : ''}`
+          : also.length
+            ? `Nothing new: ${also.join(' · ')}`
+            : 'Nothing on the plan to shop for'
+      );
+    } catch (e) {
+      toast(e.message);
+    } finally {
+      setShopping(false);
+    }
+  }
+
+  // The end of a trip round the shop: what's in the trolley was bought, so it
+  // comes off the list, and the ticks go with it.
+  async function finishShop() {
+    const done = Object.keys(groceryChecked);
+    if (!done.length) return;
+    try {
+      const { removed } = await api.clearGroceries(done);
+      setGroceryItems((prev) => prev.filter((x) => !groceryChecked[x.id]));
+      setGroceryChecked({});
+      localStorage.removeItem('rb-grocery-v4');
+      toast(`${removed} off the list`);
+    } catch (e) {
+      toast(e.message);
+    }
   }
 
   // One typed or dictated line can carry a shelf's worth of items, so each is
@@ -562,23 +579,21 @@ export default function App() {
           onClearDay={(date) => savePlanDay(date, Object.fromEntries(MEAL_SLOTS.map((s) => [s.key, null])))}
           onSaveNote={(date, note) => savePlanDay(date, { note })}
           onOpenRecipe={(id) => openRecipeById(id, 'plan')}
+          onShop={addPlanToGroceries}
+          shopping={shopping}
         />
       )}
 
       {screen === 'groceries' && (
         <Groceries
-          weekOffset={weekOffset}
-          setWeekOffset={setWeekOffset}
           sections={grocery.sections}
-          skipped={grocery.skipped}
-          removed={grocery.removed}
           total={grocery.total}
-          checked={checkedThisWeek}
+          checked={groceryChecked}
           onToggle={toggleGroceryChecked}
           onAdd={addGroceryItem}
           onRemove={removeGroceryItem}
-          onRestore={restoreGroceryItem}
           onRename={renameGroceryItem}
+          onFinishShop={finishShop}
           onOpenRecipe={(id) => openRecipeById(id, 'groceries')}
         />
       )}

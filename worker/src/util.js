@@ -262,6 +262,76 @@ export function grocerySection(text) {
   return 'other';
 }
 
+// ---------- reading an ingredient line as something to buy ----------
+//
+// All mirrored from web/src/util.js, where the same lines are read for the
+// recipe page. They live here too because the grocery list is built on the
+// server now: the plan's ingredients are pushed onto it, and two recipes that
+// ask for the same thing in different words have to land on one line.
+
+const UNI_CHARS = '¼½¾⅓⅔⅕⅖⅗⅘⅙⅛⅜⅝⅞';
+// A quantity: "2", "1.5", "1/2", "½", "1½", "1 1/2", "1 and 1/2"
+const QTY = `(?:\\d+\\s*\\/\\s*\\d+|\\d+(?:\\.\\d+)?(?:\\s*(?:and\\s+)?(?:\\d+\\s*\\/\\s*\\d+|[${UNI_CHARS}]))?|[${UNI_CHARS}])`;
+const LEADING_QTY = new RegExp(`^(${QTY})(\\s*(?:-|–|—|\\bto\\b)\\s*)?(${QTY})?`);
+
+const ING_UNITS = new Set([
+  'cup', 'cups', 'c', 'tbsp', 'tablespoon', 'tablespoons', 'tsp', 'teaspoon', 'teaspoons',
+  'oz', 'ounce', 'ounces', 'lb', 'lbs', 'pound', 'pounds', 'g', 'gram', 'grams', 'kg',
+  'ml', 'l', 'liter', 'liters', 'quart', 'quarts', 'pint', 'pints', 'gallon', 'gallons',
+  'clove', 'cloves', 'can', 'cans', 'jar', 'jars', 'package', 'packages', 'pkg', 'bag',
+  'bags', 'box', 'boxes', 'bunch', 'bunches', 'head', 'heads', 'stick', 'sticks', 'slice',
+  'slices', 'sprig', 'sprigs', 'stalk', 'stalks', 'pinch', 'pinches', 'dash', 'handful',
+  'loaf', 'loaves', 'bottle', 'bottles', 'container', 'containers', 'piece', 'pieces',
+]);
+
+/** "2 cloves garlic, minced" → { amount: '2 cloves', name: 'garlic, minced' } */
+export function splitIngredient(line) {
+  const whole = String(line ?? '').trim();
+  const m = whole.match(LEADING_QTY);
+  if (!m || !m[1]) return { amount: '', name: whole };
+  let amount = m[0].trim();
+  let rest = whole.slice(m[0].length).trim();
+  const word = rest.match(/^([A-Za-z]+)\.?\s+(.*)$/);
+  if (word && ING_UNITS.has(word[1].toLowerCase())) {
+    amount += ` ${word[1]}`;
+    rest = word[2].trim();
+  }
+  rest = rest.replace(/^of\s+/i, '');
+  return { amount, name: rest || whole };
+}
+
+// Everything a cook writes about *what to do* with an ingredient rather than
+// what to buy, dropped so two recipes' wording lands on one line.
+const PREP_WORDS =
+  /\b(?:fresh|freshly|large|small|medium|ripe|finely|coarsely|roughly|thinly|chopped|minced|diced|sliced|shredded|grated|crushed|drained|rinsed|packed|softened|melted|beaten|divided|optional|halved|quartered|cubed|trimmed|peeled)\b/g;
+
+// Plural → singular, but only where it's safe: "tomatoes" and "cloves" fold,
+// "hummus" and "molasses" don't.
+const singular = (w) => {
+  if (w.length > 4 && /(?:oes|ches|shes|sses)$/.test(w)) return w.replace(/es$/, '');
+  if (w.length > 3 && /[^su]s$/.test(w)) return w.slice(0, -1);
+  return w;
+};
+
+/** What two ingredient lines have to agree on to count as the same shopping item. */
+export const mergeKey = (name) =>
+  String(name ?? '')
+    .toLowerCase()
+    .replace(/\([^)]*\)/g, ' ')
+    .split(',')[0]
+    .replace(PREP_WORDS, ' ')
+    .replace(/[^a-z ]/g, ' ')
+    .trim()
+    .split(/\s+/)
+    .map(singular)
+    .join(' ');
+
+/** The name as it reads on a list: no bracketed asides, no "…, minced". */
+export const shoppingName = (name) =>
+  String(name ?? '').replace(/\([^)]*\)/g, ' ').split(',')[0].replace(/\s+/g, ' ').trim();
+
+export const capitalize = (s) => (s ? s[0].toUpperCase() + s.slice(1) : s);
+
 const IMAGE_EXT = {
   'image/jpeg': 'jpg',
   'image/png': 'png',

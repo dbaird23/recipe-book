@@ -93,4 +93,6 @@ export const api = {
   updateGroceryItem: (id, text, section) =>
     request(`/api/groceries/${id}`, { method: 'PATCH', body: { text, section } }),
   removeGroceryItem: (id) => request(`/api/groceries/${id}`, { method: 'DELETE' }),
+  addPlanToGroceries: (start, end) => request('/api/groceries/from-plan', { method: 'POST', body: { start, end } }),
+  clearGroceries: (ids) => request('/api/groceries/clear', { method: 'POST', body: { ids } }),
 };

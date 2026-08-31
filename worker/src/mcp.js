@@ -15,8 +15,8 @@
 // the web app uses, so permissions, validation and shapes can never drift
 // between the two.
 import {
-  HttpError, json, PANTRY_LOCATIONS, pantrySkip, GROCERY_SECTIONS, grocerySection, MEALS,
-  isIngredientHeading, countIngredients, sniffImageType,
+  HttpError, json, PANTRY_LOCATIONS, GROCERY_SECTIONS, MEALS,
+  countIngredients, sniffImageType,
 } from './util.js';
 
 const PROTOCOL_VERSION = '2025-06-18';
@@ -505,61 +505,47 @@ const TOOLS = [
 
   {
     name: 'grocery_list',
-    title: 'Build a grocery list',
+    title: 'Read the grocery list',
     description:
-      'Everything to buy for a date range: the ingredients of every recipe planned in it (breakfast, lunch and dinner) minus anything already in the kitchen, plus whatever was added by hand. Each line carries the aisle it belongs to. Quantities are left exactly as the recipes write them; nothing is combined or converted.',
+      'What is on the grocery list right now, in aisle order. The list is a real list rather than a view of the meal plan: ingredients get put on it with add_plan_to_grocery_list, and anything else is added by hand. A line put there from the plan says which meals asked for it.',
+    inputSchema: { type: 'object', properties: {} },
+    run: async (call) => {
+      const { items } = await call('GET', '/api/groceries');
+      const byAisle = GROCERY_SECTIONS.map((s) => ({
+        section: s.key,
+        label: s.label,
+        items: items
+          .filter((i) => i.section === s.key)
+          .map((i) => ({
+            itemId: i.id,
+            item: i.text,
+            for: i.sources.length ? i.sources.map((src) => ({ recipeId: src.recipeId, title: src.title, date: src.date, meal: src.meal })) : undefined,
+          })),
+      })).filter((s) => s.items.length);
+      return { itemCount: items.length, aisles: byAisle };
+    },
+  },
+
+  {
+    name: 'add_plan_to_grocery_list',
+    title: 'Put the plan\u2019s ingredients on the grocery list',
+    description:
+      'Take everything the meal plan calls for across a date range and put it on the grocery list: every ingredient of every recipe planned for breakfast, lunch and dinner, minus anything already in the kitchen and anything the list already has. Safe to call twice, and safe to call again after changing the plan: it tops the list up rather than rebuilding it, so a line that was ticked off, reworded or deleted stays as it was left. Quantities are left as the recipes write them; nothing is combined or converted.',
     inputSchema: {
       type: 'object',
       properties: {
         start: { type: 'string', description: 'First day, YYYY-MM-DD' },
         end: { type: 'string', description: 'Last day, YYYY-MM-DD (inclusive)' },
-        ignorePantry: { type: 'boolean', description: 'List everything, including what you already have. Defaults to false.' },
       },
       required: ['start', 'end'],
     },
     run: async (call, args) => {
-      const [{ entries }, { items: pantry }, { items: added }] = await Promise.all([
-        call('GET', `/api/plan?start=${encodeURIComponent(args.start)}&end=${encodeURIComponent(args.end)}`),
-        args.ignorePantry ? Promise.resolve({ items: [] }) : call('GET', '/api/pantry'),
-        call('GET', '/api/groceries'),
-      ]);
-      const skipped = new Map();
-      const planned = entries.flatMap((e) =>
-        MEALS.flatMap((meal) => (e.meals[meal] || []).map((m) => ({ date: e.date, meal, m })))
-      );
-      const fromRecipes = planned
-        .filter((x) => x.m.recipe)
-        .map(({ date, meal, m }) => {
-          const ingredients = m.recipe.ing
-            // A section heading ("For the sauce:") names the lines under it
-            .filter((line) => !isIngredientHeading(line))
-            .filter((line) => {
-              const have = pantrySkip(line, pantry);
-              if (have) skipped.set(line, have.location);
-              return !have;
-            })
-            .map((line) => ({ ingredient: line, section: grocerySection(line) }));
-          return { date, meal, recipeId: m.recipe.id, title: m.recipe.title, servings: m.recipe.servings, ingredients };
-        });
-      // Meals that are takeout, leftovers or a plain note have no ingredients
-      // but still belong in the answer, since they're meals you don't shop for.
-      const noIngredients = planned
-        .filter((x) => !x.m.recipe)
-        .map(({ date, meal, m }) => ({ date, meal, planned: itemOf(m) }));
+      const { items, alreadyOn, skipped } = await call('POST', '/api/groceries/from-plan', { start: args.start, end: args.end });
       return {
-        start: args.start,
-        end: args.end,
-        sections: GROCERY_SECTIONS,
-        itemCount: fromRecipes.reduce((n, r) => n + r.ingredients.length, 0) + added.length,
-        recipes: fromRecipes,
-        addedByHand: added.length
-          ? added.map((i) => ({ itemId: i.id, item: i.text, section: i.section }))
-          : undefined,
+        added: items.map((i) => ({ itemId: i.id, item: i.text, section: i.section, for: i.sources })),
+        alreadyOnTheList: alreadyOn,
         // Named so it's obvious these were dropped on purpose, not missed
-        alreadyInKitchen: skipped.size
-          ? [...skipped].map(([ingredient, location]) => ({ ingredient, location }))
-          : undefined,
-        nothingToBuy: noIngredients.length ? noIngredients : undefined,
+        alreadyInKitchen: skipped.length ? skipped.map((s) => ({ ingredient: s.text, location: s.location })) : undefined,
       };
     },
   },

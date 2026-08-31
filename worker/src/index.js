@@ -20,7 +20,9 @@ import {
 } from './oauth.js';
 import {
   HttpError, uid, nowIso, pairKey, json, autoNut, countIngredients, cleanNut, sanitizeRecipeInput, putImage, photoUrl,
-  PANTRY_LOCATIONS, parsePantryEntry, GROCERY_SECTIONS, grocerySection, splitSpokenEntries, MEALS,
+  PANTRY_LOCATIONS, parsePantryEntry, pantrySkip, isIngredientHeading,
+  GROCERY_SECTIONS, grocerySection, splitSpokenEntries, splitIngredient, mergeKey, shoppingName, capitalize,
+  MEALS,
 } from './util.js';
 
 // ---------- tiny router ----------
@@ -732,7 +734,18 @@ put('/api/pantry', async (ctx) => {
 // out on the fly from the plan and the pantry, so there's nothing to store and
 // nothing to go stale when a recipe changes.
 
-const groceryJson = (r) => ({ id: r.id, text: r.text, section: r.section });
+// `sources` is the recipes that asked for the line, for one pushed off the
+// plan: null for a line somebody typed, which reads back as an empty list
+// rather than making every caller check.
+const groceryJson = (r) => {
+  let sources = [];
+  try {
+    if (r.sources) sources = JSON.parse(r.sources);
+  } catch {
+    /* a row written by a future us, or a half-written one: no sources is fine */
+  }
+  return { id: r.id, text: r.text, section: r.section, sources };
+};
 
 get('/api/groceries', async (ctx) => {
   const me = requireUser(ctx);
@@ -766,6 +779,115 @@ post('/api/groceries', async (ctx) => {
     )
   );
   return json({ item: items[0], items });
+}, KEY);
+
+// Everything the plan calls for in a stretch of days, put on the list in one
+// go: the button you press when the planning is done rather than something
+// worked out fresh every time you look. What's already in the kitchen is left
+// off, and so is anything the list already has, so pressing it twice is safe
+// and pressing it after changing the plan tops the list up rather than
+// resetting it: a line you ticked, reworded or deleted stays the way you left
+// it. What was skipped comes back either way, since a skip you can't see is
+// indistinguishable from a bug.
+post('/api/groceries/from-plan', async (ctx) => {
+  const me = requireUser(ctx);
+  const body = await ctx.json();
+  const start = requireDate(body.start);
+  const end = requireDate(body.end);
+  if (end < start) throw new HttpError(400, 'That range ends before it starts');
+
+  const friendIds = await friendIdsOf(ctx.db, me.id);
+  const [entries, pantry, { results: existing }] = await Promise.all([
+    readPlan(ctx, me, start, end, friendIds),
+    listPantry(ctx.db, me.id),
+    ctx.db.prepare('SELECT * FROM grocery_items WHERE user_id=?').bind(me.id).all(),
+  ]);
+
+  // A line already on the list wins, however it got there: matched on the same
+  // key two recipes' wordings are matched on, so "2 cloves garlic, minced"
+  // recognises the "garlic" someone typed.
+  // A line that was pushed knows the key it came in under, so rewording it for
+  // the shop doesn't make the next push think it's missing. A line somebody
+  // typed has no such key, so it's read off the words the way an ingredient is.
+  const onList = new Set(
+    existing.map((r) => r.merge_key || mergeKey(splitIngredient(r.text).name) || r.text.toLowerCase())
+  );
+  const inPantry = new Map();
+  const fresh = new Map();
+  const already = new Set();
+
+  for (const entry of entries) {
+    for (const meal of MEALS) {
+      for (const { recipe } of entry.meals?.[meal] || []) {
+        if (!recipe) continue;
+        for (const line of recipe.ing) {
+          // A section heading ("For the sauce:") names the lines under it
+          if (isIngredientHeading(line)) continue;
+          const have = pantrySkip(line, pantry);
+          if (have) {
+            inPantry.set(line, have.location);
+            continue;
+          }
+          const { name } = splitIngredient(line);
+          const key = mergeKey(name) || line.toLowerCase();
+          if (onList.has(key)) {
+            already.add(key);
+            continue;
+          }
+          const source = { recipeId: recipe.id, title: recipe.title, date: entry.date, meal };
+          const row = fresh.get(key);
+          // Two meals wanting the same thing is one line that says so, not two
+          if (row) row.sources.push(source);
+          else fresh.set(key, { key, line, name: shoppingName(name), sources: [source] });
+        }
+      }
+    }
+  }
+
+  const now = nowIso();
+  const items = [...fresh.values()].slice(0, 200).map((row) => ({
+    id: uid(),
+    mergeKey: row.key,
+    // One recipe's line reads as that recipe wrote it, quantity and all; a line
+    // several of them want reads as the thing itself, since no one quantity is
+    // the right one to carry over.
+    text: (row.sources.length > 1 ? capitalize(row.name) || row.line : row.line).slice(0, 100),
+    section: grocerySection(row.line),
+    sources: row.sources,
+  }));
+  if (items.length) {
+    await ctx.db.batch(
+      items.map((it) =>
+        ctx.db
+          .prepare('INSERT INTO grocery_items (id,user_id,text,section,sources,merge_key,created_at,updated_at) VALUES (?,?,?,?,?,?,?,?)')
+          .bind(it.id, me.id, it.text, it.section, JSON.stringify(it.sources), it.mergeKey, now, now)
+      )
+    );
+  }
+  return json({
+    items: items.map(({ mergeKey: _k, ...item }) => item),
+    alreadyOn: already.size,
+    skipped: [...inPantry].map(([text, location]) => ({ text, location })),
+  });
+}, KEY);
+
+// The end of a shop: everything ticked off goes, in one call rather than one
+// per line, since a full trolley is the normal case.
+post('/api/groceries/clear', async (ctx) => {
+  const me = requireUser(ctx);
+  const ids = (await ctx.json()).ids;
+  if (!Array.isArray(ids) || !ids.length) throw new HttpError(400, 'Nothing to clear');
+  const wanted = ids.slice(0, 300).map(String);
+  const { results } = await ctx.db
+    .prepare(`SELECT id FROM grocery_items WHERE user_id=? AND id IN (${wanted.map(() => '?').join(',')})`)
+    .bind(me.id, ...wanted)
+    .all();
+  if (results.length) {
+    await ctx.db.batch(
+      results.map((r) => ctx.db.prepare('DELETE FROM grocery_items WHERE id=?').bind(r.id))
+    );
+  }
+  return json({ removed: results.length });
 }, KEY);
 
 // Reworded rather than re-added: the aisle is worked out again from the new

@@ -174,10 +174,18 @@ function DayCard({ day, entry, onPick, onClearItem, onClearDay, onOpenRecipe, on
   );
 }
 
-export default function Plan({ weekOffset, setWeekOffset, entries, onPick, onClearItem, onClearDay, onOpenRecipe, onSaveNote }) {
+export default function Plan({
+  weekOffset, setWeekOffset, entries, onPick, onClearItem, onClearDay, onOpenRecipe, onSaveNote, onShop, shopping,
+}) {
   const monday = mondayOf(weekOffset);
   const days = DAY_NAMES.map((name, i) => ({ name, date: addDays(monday, i) }));
   const byDate = Object.fromEntries(entries.map((e) => [e.date, e]));
+  // Nothing to shop for until a recipe is on the week: takeout and a note that
+  // says "date night" have no ingredients between them.
+  const planned = entries.reduce(
+    (n, e) => n + MEAL_SLOTS.reduce((m, slot) => m + (e.meals?.[slot.key] || []).filter((x) => x.recipe).length, 0),
+    0
+  );
 
   return (
     <div className="screen">
@@ -195,6 +203,19 @@ export default function Plan({ weekOffset, setWeekOffset, entries, onPick, onCle
           <button className="btn-text-green" onClick={() => setWeekOffset(0)}>This week</button>
         )}
       </div>
+
+      {/* Planning and shopping are two jobs, and this is the seam between them:
+          press it when the week looks right and everything it calls for lands on
+          the grocery list. Deliberately a button rather than something that
+          happens by itself, because a list that rewrites itself under you as you
+          change your mind about Thursday is no use in a shop. */}
+      {planned > 0 && (
+        <div style={{ padding: '0 20px 12px' }}>
+          <button className="btn-secondary" style={{ width: '100%' }} onClick={onShop} disabled={shopping}>
+            {shopping ? 'Adding…' : 'Add ingredients to grocery list'}
+          </button>
+        </div>
+      )}
 
       <div className="scroll" style={{ padding: '2px 20px 100px', display: 'flex', flexDirection: 'column', gap: 10 }}>
         {days.map((day) => (

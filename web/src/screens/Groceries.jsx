@@ -1,6 +1,6 @@
 import { useRef, useState } from 'react';
 import { Check } from '../components.jsx';
-import { mondayOf, addDays, shortDate, weekTitle } from '../util.js';
+import { DAY_NAMES } from '../util.js';
 
 const ROW_BORDER = '1px solid #f4f1ea';
 
@@ -76,10 +76,9 @@ function SwipeRow({ onDelete, deleteLabel, children }) {
 }
 
 /**
- * One line to buy. An ingredient several of the week's meals want is a single
- * line here, and it says so: tapping the count opens the recipes behind it so
- * you can see what you'd be short of if you skipped it. Swiping it left removes
- * it altogether.
+ * One line to buy. A line put here from the plan remembers the meals that asked
+ * for it, and says so: tapping the count opens the recipes behind it so you can
+ * see what you'd be short of if you skipped it. Swiping it left removes it.
  *
  * The tick and the words do different jobs. Ticking it off takes it off the
  * list, so only the box does that; tapping the words opens them for editing,
@@ -94,6 +93,7 @@ function ItemRow({ item, onToggle, onOpenRecipe, onRemove, onRename }) {
   const only = item.sources.length === 1 ? item.sources[0] : null;
   // The same recipe cooked twice in a week is two meals, not two recipes
   const distinct = new Set(item.sources.map((s) => s.recipeId)).size;
+  const dayOf = (src) => DAY_NAMES[(new Date(`${src.date}T12:00:00`).getDay() + 6) % 7] || '';
 
   // Return, Escape and tapping away all land here, and the first one through
   // wins: Return closes the input, which fires a blur behind it, and an edit
@@ -152,9 +152,6 @@ function ItemRow({ item, onToggle, onOpenRecipe, onRemove, onRename }) {
               >
                 {distinct > 1 ? `For ${distinct} recipes` : `For ${item.sources.length} meals`} {open ? '⌃' : '⌄'}
               </button>
-              {item.amounts.length > 0 && (
-                <span style={{ fontSize: 11.5, color: 'var(--faint)' }}>{item.amounts.join(' + ')}</span>
-              )}
             </div>
           )}
 
@@ -163,13 +160,10 @@ function ItemRow({ item, onToggle, onOpenRecipe, onRemove, onRename }) {
               onClick={(e) => { e.stopPropagation(); onOpenRecipe(only.recipeId); }}
               style={{ border: 'none', background: 'none', padding: '2px 0 0', fontSize: 11.5, color: 'var(--faint)', cursor: 'pointer' }}
             >
-              {only.dayName.slice(0, 3)} {only.meal.toLowerCase()} · {only.title}
+              {dayOf(only).slice(0, 3)} {only.meal} · {only.title}
             </button>
           )}
 
-          {item.manualId && (
-            <div style={{ fontSize: 11.5, color: 'var(--faint)', marginTop: 2 }}>Added by you</div>
-          )}
         </div>
       </div>
 
@@ -185,10 +179,10 @@ function ItemRow({ item, onToggle, onOpenRecipe, onRemove, onRename }) {
               }}
             >
               <span style={{ fontSize: 11, fontWeight: 700, color: 'var(--green)', letterSpacing: 0.5 }}>
-                {s.dayName.slice(0, 3).toUpperCase()}
+                {dayOf(s).slice(0, 3).toUpperCase()}
               </span>
               <span style={{ flex: 1, minWidth: 0, fontSize: 12.5, color: 'var(--ink)' }}>
-                {s.title} <span style={{ color: 'var(--faint)' }}>· {s.meal.toLowerCase()}</span>
+                {s.title} <span style={{ color: 'var(--faint)' }}>· {s.meal}</span>
               </span>
               <span className="chev" style={{ fontSize: 16, padding: 0 }}>›</span>
             </button>
@@ -233,9 +227,11 @@ function AddRow({ onAdd }) {
 }
 
 /**
- * The week's shopping, in aisle order rather than by day, so it's one walk through the
- * shop instead of seven. Ticks live in the browser, so they survive a reload
- * but don't need a round trip while you're standing in an aisle.
+ * The shopping, in aisle order rather than by day, so it's one walk through the
+ * shop. One list, not a week's: what the plan calls for is put on it from the
+ * plan when the planning is done, and it stays until it's bought or removed.
+ * Ticks live in the browser, so they survive a reload but don't need a round
+ * trip while you're standing in an aisle.
  *
  * Ticking something off takes it off the list rather than greying it out, because what
  * you want in front of you in a shop is what you still have to find. The ones
@@ -243,12 +239,11 @@ function AddRow({ onAdd }) {
  * aisle you don't walk down folds away too.
  */
 export default function Groceries({
-  weekOffset, setWeekOffset, sections, skipped, removed, total, checked, onToggle, onAdd, onRemove, onRestore, onRename, onOpenRecipe,
+  sections, total, checked, onToggle, onAdd, onRemove, onRename, onOpenRecipe, onFinishShop,
 }) {
-  const [showSkipped, setShowSkipped] = useState(false);
   const [showDone, setShowDone] = useState(false);
-  // Which aisles are folded away. A standing preference, not a per-week one:
-  // the aisle you never walk down is the same aisle every week.
+  // Which aisles are folded away: a standing preference, since the aisle you
+  // never walk down is the same aisle every week.
   const [collapsed, setCollapsed] = useState(() => {
     try {
       return JSON.parse(localStorage.getItem('rb-grocery-collapsed') || '{}');
@@ -256,7 +251,6 @@ export default function Groceries({
       return {};
     }
   });
-  const monday = mondayOf(weekOffset);
 
   function toggleAisle(key) {
     setCollapsed((prev) => {
@@ -278,17 +272,6 @@ export default function Groceries({
         <div style={{ fontSize: 12.5, color: 'var(--muted)' }}>
           {done.length ? `${total - done.length} of ${total} left` : `${total} ${total === 1 ? 'item' : 'items'}`}
         </div>
-      </div>
-
-      <div style={{ padding: '0 20px 10px', display: 'flex', alignItems: 'center', gap: 10 }}>
-        <button className="week-nav" onClick={() => setWeekOffset(weekOffset - 1)} aria-label="Previous week">‹</button>
-        <div style={{ fontSize: 12.5, color: 'var(--muted)', minWidth: 110, textAlign: 'center' }}>
-          {weekTitle(weekOffset)} · {shortDate(monday)} – {shortDate(addDays(monday, 6))}
-        </div>
-        <button className="week-nav" onClick={() => setWeekOffset(weekOffset + 1)} aria-label="Next week">›</button>
-        {weekOffset !== 0 && (
-          <button className="btn-text-green" onClick={() => setWeekOffset(0)}>This week</button>
-        )}
       </div>
 
       <AddRow onAdd={onAdd} />
@@ -338,9 +321,7 @@ export default function Groceries({
           <div style={{ textAlign: 'center', color: 'var(--faint)', fontSize: 13, padding: 24, lineHeight: 1.6 }}>
             {done.length > 0
               ? 'That’s everything. The whole list is in the trolley.'
-              : skipped.length > 0
-                ? 'Everything this week is already in your kitchen.'
-                : 'Plan a meal and its ingredients show up here, or add something yourself above.'}
+              : 'Nothing to buy. Add something above, or put a week’s ingredients on the list from the plan.'}
           </div>
         )}
 
@@ -371,56 +352,21 @@ export default function Groceries({
                     </div>
                   </div>
                 ))}
-              </div>
-            )}
-          </div>
-        )}
-
-        {removed.length > 0 && (
-          <div>
-            <div className="section-label" style={{ fontSize: 11.5, marginBottom: 6 }}>
-              Struck off this week
-            </div>
-            <div className="card" style={{ padding: '2px 12px' }}>
-              {removed.map((r) => (
-                <div
-                  key={r.key}
-                  style={{ display: 'flex', gap: 10, alignItems: 'center', padding: '8px 0', borderBottom: ROW_BORDER }}
+                {/* The end of a trip: what's in the trolley has been bought, so
+                    it comes off the list for good. Everything still on the list
+                    stays, since it's what you didn't find. */}
+                <button
+                  className="btn-text-green"
+                  style={{ width: '100%', padding: '10px 0 9px', fontSize: 13 }}
+                  onClick={onFinishShop}
                 >
-                  <div style={{ flex: 1, minWidth: 0, fontSize: 13, color: 'var(--faint)', textDecoration: 'line-through' }}>
-                    {r.label}
-                  </div>
-                  <button className="btn-text-green" style={{ flex: '0 0 auto' }} onClick={() => onRestore(r.key)}>
-                    Put back
-                  </button>
-                </div>
-              ))}
-            </div>
-          </div>
-        )}
-
-        {skipped.length > 0 && (
-          <div>
-            <button
-              onClick={() => setShowSkipped((v) => !v)}
-              style={{ width: '100%', textAlign: 'left', border: 'none', background: 'none', padding: '2px 0', fontSize: 12.5, fontWeight: 600, color: 'var(--label)', cursor: 'pointer' }}
-            >
-              {showSkipped ? '⌃' : '⌄'}  {skipped.length} {skipped.length === 1 ? 'item' : 'items'} already in your kitchen
-            </button>
-            {showSkipped && (
-              <div style={{ background: '#f7f5ef', border: '1px solid var(--card-bd)', borderRadius: 12, padding: '2px 12px', marginTop: 6 }}>
-                {skipped.map((s) => (
-                  <div key={s.text} style={{ display: 'flex', gap: 10, alignItems: 'center', padding: '8px 0', borderBottom: '1px solid var(--card-bd)' }}>
-                    <div style={{ flex: 1, minWidth: 0, fontSize: 13, color: 'var(--faint)', textDecoration: 'line-through' }}>
-                      {s.text}
-                    </div>
-                    <div className="section-label" style={{ flex: '0 0 auto', fontSize: 11, letterSpacing: 0.5 }}>{s.location}</div>
-                  </div>
-                ))}
+                  Start a new shop · clears {done.length}
+                </button>
               </div>
             )}
           </div>
         )}
+
       </div>
     </div>
   );

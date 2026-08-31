@@ -372,22 +372,6 @@ export function parsePantryEntry(text) {
   return { name: v, qty: 1, unit: '', hadQty: false };
 }
 
-/**
- * The pantry item that covers an ingredient line, or null. "Kidney beans"
- * covers "2 cans kidney beans, drained". Deliberately loose and blind to a
- * trailing plural: a wrong skip costs one trip down an aisle, and the grocery
- * sheet lists every skip back to you. Names under three characters never
- * match, since too many false hits follow. The Worker keeps the same rule for the MCP
- * grocery list, in worker/src/util.js.
- */
-export function pantrySkip(text, items) {
-  const t = String(text).toLowerCase();
-  return items.find((it) => {
-    const name = it.name.toLowerCase().replace(/s$/, '');
-    return name.length > 2 && t.includes(name);
-  }) || null;
-}
-
 // ---- ingredient scaling (1×–4× view on the recipe page) ----
 
 const UNI_FRAC = {
@@ -461,7 +445,8 @@ export const GROCERY_SECTIONS = [
 
 // First match wins, so the exceptions sit above the general rules: "chicken
 // broth" is a pantry shelf, not the meat counter, and "dried dill" is a spice
-// jar rather than a bunch of herbs. Like pantrySkip this is deliberately loose:
+// jar rather than a bunch of herbs. Like the pantry match in worker/src/util.js
+// this is deliberately loose:
 // a mis-filed line costs you a few steps in the shop, and anything it doesn't
 // recognise lands in "Other" rather than somewhere confidently wrong.
 const AISLE_RULES = [
@@ -483,158 +468,24 @@ export function grocerySection(text) {
   return 'other';
 }
 
-// Measures we'll lift off the front of an ingredient line. Cuts of meat
-// ("breasts", "thighs") are deliberately absent: dropping those would merge
-// chicken breasts with chicken thighs into one line you can't shop from.
-const ING_UNITS = new Set([
-  'cup', 'cups', 'c', 'tbsp', 'tablespoon', 'tablespoons', 'tsp', 'teaspoon', 'teaspoons',
-  'oz', 'ounce', 'ounces', 'lb', 'lbs', 'pound', 'pounds', 'g', 'gram', 'grams', 'kg',
-  'ml', 'l', 'liter', 'liters', 'quart', 'quarts', 'pint', 'pints', 'gallon', 'gallons',
-  'clove', 'cloves', 'can', 'cans', 'jar', 'jars', 'package', 'packages', 'pkg', 'bag',
-  'bags', 'box', 'boxes', 'bunch', 'bunches', 'head', 'heads', 'stick', 'sticks', 'slice',
-  'slices', 'sprig', 'sprigs', 'stalk', 'stalks', 'pinch', 'pinches', 'dash', 'handful',
-  'loaf', 'loaves', 'bottle', 'bottles', 'container', 'containers', 'piece', 'pieces',
-]);
-
-/** "2 cloves garlic, minced" → { amount: '2 cloves', name: 'garlic, minced' } */
-export function splitIngredient(line) {
-  const whole = String(line ?? '').trim();
-  const m = whole.match(LEADING_QTY);
-  if (!m || !m[1]) return { amount: '', name: whole };
-  let amount = m[0].trim();
-  let rest = whole.slice(m[0].length).trim();
-  const word = rest.match(/^([A-Za-z]+)\.?\s+(.*)$/);
-  if (word && ING_UNITS.has(word[1].toLowerCase())) {
-    amount += ` ${word[1]}`;
-    rest = word[2].trim();
-  }
-  rest = rest.replace(/^of\s+/i, '');
-  return { amount, name: rest || whole };
-}
-
-// Everything a cook writes about *what to do* with an ingredient rather than
-// what to buy, dropped so two recipes' wording lands on one line.
-const PREP_WORDS =
-  /\b(?:fresh|freshly|large|small|medium|ripe|finely|coarsely|roughly|thinly|chopped|minced|diced|sliced|shredded|grated|crushed|drained|rinsed|packed|softened|melted|beaten|divided|optional|halved|quartered|cubed|trimmed|peeled)\b/g;
-
-// Plural → singular, but only where it's safe: "tomatoes" and "cloves" fold,
-// "hummus" and "molasses" don't.
-const singular = (w) => {
-  if (w.length > 4 && /(?:oes|ches|shes|sses)$/.test(w)) return w.replace(/es$/, '');
-  if (w.length > 3 && /[^su]s$/.test(w)) return w.slice(0, -1);
-  return w;
-};
-
-/** What two ingredient lines have to agree on to count as the same shopping item. */
-const mergeKey = (name) =>
-  name
-    .toLowerCase()
-    .replace(/\([^)]*\)/g, ' ')
-    .split(',')[0]
-    .replace(PREP_WORDS, ' ')
-    .replace(/[^a-z ]/g, ' ')
-    .trim()
-    .split(/\s+/)
-    .map(singular)
-    .join(' ');
-
-/** The name as it reads on a list: no bracketed asides, no "…, minced". */
-const shoppingName = (name) => name.replace(/\([^)]*\)/g, ' ').split(',')[0].replace(/\s+/g, ' ').trim();
-
-const capitalize = (s) => (s ? s[0].toUpperCase() + s.slice(1) : s);
-
 /**
- * The week's shopping, laid out the way a shop is: by aisle rather than by
- * day, with an ingredient that several meals need collapsed onto one line
- * that remembers which recipes wanted it. Anything the pantry already covers
- * is dropped, and every drop is handed back in `skipped`, since a loose name match
- * will occasionally lose something you did need. `hidden` is the lines struck
- * off by hand this week: the recipe still calls for them, this shop doesn't.
- * `renamed` is the lines reworded this week, by key: the recipe's wording is
- * what it is, but what you want to read in the shop is your own.
+ * The list, in aisle order. Nothing is worked out here any more: the plan's
+ * ingredients are put on the list when the planning is done, so what's stored
+ * is what you see, and a line reads the same tomorrow as it did today.
  */
-export function buildGroceryList({ entries, weekOffset, pantry = [], manual = [], hidden = [], renamed = {} }) {
-  const skippedByText = new Map();
-  const rows = new Map();
-  const isHidden = new Set(hidden);
-
-  DAY_NAMES.forEach((dayName, i) => {
-    const date = isoDate(addDays(mondayOf(weekOffset), i));
-    const entry = entries.find((e) => e.date === date);
-    if (!entry) return;
-    // A meal can be several things, so take the ingredients of every one of them
-    for (const slot of MEAL_SLOTS) {
-      for (const { recipe } of entry.meals?.[slot.key] || []) {
-        if (!recipe) continue;
-        for (const text of recipe.ing) {
-          // A section heading names the lines under it; it isn't one of them
-          if (isIngredientHeading(text)) continue;
-          const have = pantrySkip(text, pantry);
-          if (have) {
-            skippedByText.set(text, have.location);
-            continue;
-          }
-          const { amount, name } = splitIngredient(text);
-          const key = mergeKey(name) || text.toLowerCase();
-          const source = { recipeId: recipe.id, title: recipe.title, dayName, date, meal: slot.label };
-          const row = rows.get(key);
-          if (row) {
-            row.sources.push(source);
-            row.amounts.push(amount);
-          } else {
-            rows.set(key, {
-              key: `ing:${key}`,
-              text,
-              name: shoppingName(name),
-              amounts: [amount],
-              sources: [source],
-              section: grocerySection(text),
-            });
-          }
-        }
-      }
-    }
-  });
-
-  // What a derived line reads as: one recipe means its own wording, quantity and
-  // all; several means the ingredient itself, with the amounts each recipe asked
-  // for beside it. A line you've reworded reads the way you wrote it.
-  const labelOf = (row) => renamed[row.key] || (row.sources.length > 1 ? capitalize(row.name) : row.text);
-
-  const struck = [...rows.values()].filter((row) => isHidden.has(row.key));
-  const items = [...rows.values()].filter((row) => !isHidden.has(row.key)).map((row) => ({
-    key: row.key,
-    label: labelOf(row),
-    amounts: row.sources.length > 1 ? row.amounts.filter(Boolean) : [],
-    sources: row.sources,
-    // Reworded lines are filed again from the new words: "chicken broth" cut
-    // down to "broth" is still a pantry shelf, but "stock" isn't the meat counter.
-    section: renamed[row.key] ? grocerySection(renamed[row.key]) : row.section,
-    manualId: null,
+export function groupGroceries(items) {
+  const rows = items.map((it) => ({
+    key: it.id,
+    id: it.id,
+    label: it.text,
+    sources: it.sources || [],
+    section: GROCERY_SECTIONS.some((s) => s.key === it.section) ? it.section : 'other',
   }));
-
-  for (const m of manual) {
-    items.push({
-      key: `man:${m.id}`,
-      label: m.text,
-      amounts: [],
-      sources: [],
-      section: GROCERY_SECTIONS.some((s) => s.key === m.section) ? m.section : 'other',
-      manualId: m.id,
-    });
-  }
-
-  const sections = GROCERY_SECTIONS.map((s) => ({
-    ...s,
-    items: items.filter((it) => it.section === s.key),
-  })).filter((s) => s.items.length);
-
   return {
-    sections,
-    total: items.length,
-    skipped: [...skippedByText].map(([text, location]) => ({ text, location })),
-    // Handed back so a line struck off by hand can be put back on
-    removed: struck.map((row) => ({ key: row.key, label: labelOf(row) || capitalize(row.name) || row.text })),
+    sections: GROCERY_SECTIONS.map((s) => ({ ...s, items: rows.filter((r) => r.section === s.key) })).filter(
+      (s) => s.items.length
+    ),
+    total: rows.length,
   };
 }
 

@@ -32,8 +32,8 @@ invite only, running on Cloudflare Workers + D1 + R2.
 - **Pantry**: what you already keep in the pantry, fridge and freezer, typed *or dictated* the way
   you'd say it: "two cans of black beans, a bag of rice and three onions" lands as three items, spoken
   numbers and all, and the count can come after the thing too ("spaghetti 2 bags"). Counts step up and
-  down right on the shelf, and each shelf folds away. The grocery list leaves those ingredients out and
-  shows you what it skipped. Tap any item's words to reword it. **Take inventory** walks the shelves in
+  down right on the shelf, and each shelf folds away. Ingredients coming off the plan skip whatever
+  the shelves already cover, and the count of what was skipped is reported back. Tap any item's words to reword it. **Take inventory** walks the shelves in
   one pass: cross out what's gone with its box (the count stays put, so a mis-tap costs nothing), add
   whatever you find, reword anything that reads wrong, and everything still crossed out drops off when
   you save
@@ -42,13 +42,17 @@ invite only, running on Cloudflare Workers + D1 + R2.
   one a recipe (yours or a friend's), "leftovers", or anything you type ("Takeout", "Date night"), plus
   a note for the day; clear one dish or the whole day in a tap. Any recipe can be put on the week
   from its own page, without going to the plan first
-- **Groceries**: its own tab, built from the week's plan and laid out by aisle (produce, dairy,
-  freezer…) rather than by day, so it's one walk through the shop. An ingredient several meals need
-  is a single line that says how many recipes want it; tap the count to see which, or to open one.
-  Add anything by hand, in a run if you like ("milk, eggs and bread" is three lines), and the aisle
-  is read off the words rather than picked. Tick a line off with
-  its box (it leaves the list and waits in "the trolley" at the bottom), tap its words to reword it
-  for this shop, and swipe it left to drop it from the week altogether
+- **Groceries**: one list, not a week's, laid out by aisle (produce, dairy, freezer…) rather than by
+  day, so it's one walk through the shop. It's a real list rather than a view of the plan: when the
+  week looks right, **Add ingredients to grocery list** on the plan puts everything it calls for onto
+  it, minus what the pantry already covers and what the list already has, and tells you what it left
+  off. Safe to press again after changing your mind about Thursday: it tops the list up rather than
+  rebuilding it, so nothing you've ticked, reworded or deleted comes back. An ingredient several
+  meals need is a single line that says how many; tap the count to see which, or to open one. Add
+  anything by hand, in a run if you like ("milk, eggs and bread" is three lines), and the aisle is
+  read off the words rather than picked. Tick a line off with its box (it leaves the list and waits
+  in "the trolley" at the bottom), tap its words to reword it, and swipe it left to drop it. At the
+  till, **Start a new shop** takes everything in the trolley off the list for good
 - **Friends**: each member has their own book; browse a friend's recipes, search across all friends,
   save any recipe into your own book (a clean copy: no tags or comments carried over, credited to
   them, and independent of their later edits)
@@ -89,12 +93,21 @@ your avatar → *Connected apps* → **Give an AI assistant access**.
 ChatGPT's custom connectors have nowhere to put an API key, so it does OAuth instead. There is
 nothing to copy but the address:
 
-1. In ChatGPT: **Settings → Apps & Connectors → Advanced → Developer mode**.
-2. **Create** a connector pointing at `https://recipe-book.dbaird23.workers.dev/mcp`.
-3. ChatGPT opens Pinch. Sign in as yourself and press **Allow**.
+1. In ChatGPT on the web: **Settings → Security and login → Developer mode**.
+2. Open **Plugins**, press **+**, and point it at `https://recipe-book.dbaird23.workers.dev/mcp`,
+   with **OAuth** for authentication.
+3. ChatGPT opens Pinch. Check the account on the consent screen is yours, and press **Allow**.
+4. The app waits under **Drafts**, and turns up in a chat under the composer's *Developer mode* tool.
 
 That's it: no key, no config file, and nothing to paste back. ChatGPT registers itself, so it never
 needs to be set up on this end either.
+
+Developer mode is web only, and needs Plus, Pro, Business, Enterprise or Edu; on a Business or
+Enterprise workspace an admin has to allow custom MCP connectors before the toggle appears at all.
+
+> OpenAI has moved this twice — it used to be *Connectors → Advanced*, and connectors are now called
+> plugins. If the menu doesn't match, the address and the OAuth flow are still right; only their
+> wording has moved.
 
 Each connection shows up under *Connected apps* with when it was made and last used, and
 **Disconnect** kills it and every token it holds on the spot.
@@ -175,9 +188,10 @@ key, which is the one moment the token is in hand.
 | `add_pantry_item` | Put something in the kitchen, from a typed line or explicit fields |
 | `update_pantry_item` | Change an item's name, count, unit or shelf |
 | `remove_pantry_item` | Take something out, used up or gone off |
-| `grocery_list` | Everything to buy for a date range: the planned recipes' ingredients minus what the pantry covers, plus hand-added items, each tagged with its aisle |
+| `grocery_list` | What's on the grocery list now, in aisle order, each line saying which meals asked for it |
+| `add_plan_to_grocery_list` | Put everything the plan calls for over a date range onto the list, minus what the pantry covers and what's already there |
 | `add_grocery_item` | Put something on the grocery list by hand, or several in one line |
-| `remove_grocery_item` | Take a hand-added item off the list |
+| `remove_grocery_item` | Take an item off the list |
 
 The tools call the same route handlers the web app does, so permissions and validation can't drift
 between the two.
@@ -203,7 +217,8 @@ Open to keys: `GET /api/me`, `GET|POST /api/recipes`, `GET|PATCH /api/recipes/:i
 `POST /api/recipes/:id/save`, `GET /api/friends`, `GET /api/friends/recipes`,
 `GET /api/friends/:id/recipes`, `GET|PUT /api/plan`, `POST /api/import`,
 `GET|POST|PUT /api/pantry`, `PATCH|DELETE /api/pantry/:id`, `GET|POST /api/groceries`,
-`PATCH|DELETE /api/groceries/:id`.
+`PATCH|DELETE /api/groceries/:id`, `POST /api/groceries/from-plan`,
+`POST /api/groceries/clear`.
 
 **Deliberately not open to keys or OAuth tokens:** deleting recipes, comments and photos, invites,
 avatars, issuing or listing keys, and granting access to another app. Those need a signed-in browser,
@@ -331,10 +346,10 @@ work from inside `worker/`. The npm scripts above run from anywhere in the repo.
   minus the logos, headshots and Pinterest graphics. A site that lays either out in a way the
   importer doesn't recognise simply comes back without them; everything is editable on the review
   screen either way.
-- **Ticks, hand-struck lines and rewordings on the grocery list** live in the browser, filed under
-  the week they belong to, so a shop doesn't need a round trip in an aisle and last week's list can't
-  hide this week's flour. Striking a planned ingredient off only hides it for that week, and
-  rewording one lays your words over the recipe's rather than editing it; the recipe still calls for
-  what it calls for.
+- **Ticks on the grocery list** live in the browser, so a shop doesn't need a round trip while
+  you're standing in an aisle with one bar of signal. Everything else about the list is stored:
+  a line put there from the plan remembers the meals that asked for it and the key it was matched
+  on, so rewording it for the shop ("2 lb chicken thighs, boneless" is not how you buy them) doesn't
+  make the next push think it's missing and put the recipe's wording back beside it.
 - **AI & API access** isn't in the prototype at all. It exists so an assistant can plan meals and
   build a shopping list against the real book instead of guessing.

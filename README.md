@@ -13,7 +13,9 @@ invite only, running on Cloudflare Workers + D1 + R2.
 - **My Recipes**: list or grid view, search, meal/tag filters, newest/A–Z sort
 - **Add recipes four ways**: import from a URL (reads the site's schema.org recipe data for times,
   nutrition and creator credit, and the page itself for the cook's notes and the step photos through
-  the post), **photograph it** (see below), paste the text and let it parse, or start from scratch
+  the post; a link shared out of **MealBoard** is read as the recipe file it is, categories and all,
+  one recipe per link), **photograph it** (see below), paste the text and let it parse, or start
+  from scratch
 - **Photograph a recipe**: point the camera at a cookbook page, a handwritten card or a clipping and
   it comes back as a filled-in draft — title, times, ingredients (sections and all), steps, notes, and
   the printed nutrition if there is any. Up to four photos when the recipe runs over the page, read as

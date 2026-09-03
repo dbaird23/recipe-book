@@ -6,6 +6,16 @@ import { MEALS, TAGS, SAMPLE_PASTE, parseText, readableCopy } from '../util.js';
 // The Worker takes no more than this in one scan, and the wording below says so.
 const MAX_SCAN_PHOTOS = 4;
 
+// Tags off an import land on the built-in chip when they only differ by case
+// ("dinner" is Dinner), and stay as they were typed otherwise.
+function matchTags(tags) {
+  const standard = [...MEALS, ...TAGS];
+  return [...new Set((tags || []).map((t) => standard.find((s) => s.toLowerCase() === t.toLowerCase()) || t))];
+}
+
+// Chips read fastest in alphabetical order, whichever list they came from
+const byName = (a, b) => a.localeCompare(b, undefined, { sensitivity: 'base' });
+
 export function AddStep1({ onCancel, onDraft, toast, canScan = false }) {
   const [importUrl, setImportUrl] = useState('');
   const [importing, setImporting] = useState(false);
@@ -24,8 +34,9 @@ export function AddStep1({ onCancel, onDraft, toast, canScan = false }) {
     setImporting(true);
     try {
       const { draft } = await api.importUrl(u);
-      onDraft({ ...draft, tags: [], photoUrls: draft.images || [] });
-      toast('Recipe imported');
+      // A MealBoard share arrives with its categories; a web page has none
+      onDraft({ ...draft, tags: matchTags(draft.tags), photoUrls: draft.images || [] });
+      toast(draft.more ? `That link holds ${draft.more + 1} recipes. The first came through; share the rest one at a time for now.` : 'Recipe imported');
     } catch (e) {
       toast(e.message);
     } finally {
@@ -75,7 +86,7 @@ export function AddStep1({ onCancel, onDraft, toast, canScan = false }) {
           <input
             className="input"
             style={{ flex: 1, minWidth: 0, padding: '11px 14px' }}
-            placeholder="https://a-recipe-page.com/…"
+            placeholder="A recipe page, or a MealBoard share link"
             value={importUrl}
             onChange={(e) => setImportUrl(e.target.value)}
             onKeyDown={(e) => e.key === 'Enter' && runImport()}
@@ -85,7 +96,8 @@ export function AddStep1({ onCancel, onDraft, toast, canScan = false }) {
           </button>
         </div>
         <div style={{ fontSize: 12, color: 'var(--faint)', marginTop: 6, lineHeight: 1.4 }}>
-          Pulls in the photos, ingredients, directions, notes, nutrition, and the original creator.
+          Pulls in the photos, ingredients, directions, notes, nutrition, and the original creator. A recipe
+          shared out of MealBoard comes across too, categories and all.
         </div>
 
         {canScan && (
@@ -255,7 +267,7 @@ export function AddStep2({ draft: initial, editing, knownTags = [], onBack, onSa
         <div>
           <div className="section-label" style={{ marginBottom: 8 }}>Tags</div>
           <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-            {[...standardTags, ...customTags].map((t) => (
+            {[...standardTags, ...customTags].sort(byName).map((t) => (
               <ChipToggle
                 key={t}
                 label={t}

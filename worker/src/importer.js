@@ -229,6 +229,83 @@ function findRecipeNode(node) {
   return null;
 }
 
+// ---------- MealBoard ----------
+//
+// MealBoard (the iPhone meal planner) shares a recipe as a link to a small
+// JSON file: a list of recipes, each with a name, times, a serving count, the
+// ingredients already broken into quantity, name and prep, and the method as
+// one block of text. No photos and no nutrition. The link needs no login, so
+// it's read the same way a recipe page is, and comes back as the same draft.
+
+/** The parsed file when the fetched thing is a MealBoard share, else null. */
+function mealBoardFile(url, res, text) {
+  const type = res.headers.get('content-type') || '';
+  const looksLikeOne = /mealboard/i.test(type) || /(^|\.)mealboardapp\.com$/i.test(url.hostname);
+  if (!looksLikeOne && !/^\s*\{/.test(text)) return null;
+  try {
+    const data = JSON.parse(text);
+    return Array.isArray(data?.recipes) ? data : null;
+  } catch {
+    return null;
+  }
+}
+
+/** "2" + "chicken breasts" + "cut into strips" → "2 chicken breasts, cut into strips" */
+function mealBoardIngredient(i) {
+  const name = String(i?.name ?? '').trim();
+  if (!name) return '';
+  // A group header is a section heading, written the way the review screen
+  // reads one: a short line ending in a colon
+  if (i.isGroupHeader) return name.replace(/:$/, '') + ':';
+  const qty = String(i.quantity ?? '').trim();
+  const prep = String(i.prep ?? '').trim();
+  return [qty, name].filter(Boolean).join(' ') + (prep ? `, ${prep}` : '');
+}
+
+/**
+ * One step per line. The method is usually typed with a line break between
+ * steps; when it's a single paragraph, break it at the sentences instead so
+ * it doesn't land as one long step.
+ */
+function mealBoardSteps(text) {
+  const lines = String(text ?? '').split(/\n+/).map((s) => s.trim()).filter(Boolean);
+  if (lines.length !== 1) return lines;
+  return lines[0].split(/(?<=[.!?])\s+(?=[A-Z])/).map((s) => s.trim()).filter(Boolean);
+}
+
+function draftFromMealBoard(file) {
+  const [r, ...rest] = file.recipes;
+  if (!r) throw new HttpError(422, 'That MealBoard link has no recipe in it');
+  const minutes = (v) => Math.max(0, Math.round(+v || 0));
+  // The source is whatever the cook typed: a link, a book, a person, or nothing
+  let source = String(r.source ?? '').trim() || null;
+  if (source && /^https?:\/\//i.test(source)) {
+    try {
+      source = new URL(source).hostname.replace(/^www\./, '');
+    } catch {
+      /* keep the text as typed */
+    }
+  }
+  return {
+    title: String(r.name ?? '').trim() || 'Imported Recipe',
+    prep: String(minutes(r.prepTime) || ''),
+    cook: String(minutes(r.cookingTime) || ''),
+    serv: String(minutes(r.numServings) || ''),
+    ing: (Array.isArray(r.ingredients) ? r.ingredients : []).map(mealBoardIngredient).filter(Boolean).join('\n'),
+    dirs: mealBoardSteps(r.preparation).join('\n'),
+    notes: String(r.desc ?? '').trim(),
+    // MealBoard's categories ("Dinner", "Soup") are this app's tags
+    tags: (Array.isArray(r.categories) ? r.categories : []).map((t) => String(t).trim()).filter(Boolean),
+    source,
+    author: null,
+    images: [],
+    nutImport: null,
+    // The file can hold a whole list; only the first comes through for now,
+    // and the caller says so rather than dropping the rest on the quiet
+    more: rest.length,
+  };
+}
+
 export async function importFromUrl(rawUrl) {
   let url;
   try {
@@ -245,7 +322,8 @@ export async function importFromUrl(rawUrl) {
         // Recipe sites commonly block unfamiliar agents, so look like a browser
         'user-agent':
           'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0 Safari/537.36',
-        accept: 'text/html,application/xhtml+xml',
+        // A MealBoard share link answers with its own type, not HTML
+        accept: 'text/html,application/xhtml+xml,*/*;q=0.8',
         'accept-language': 'en-US,en;q=0.9',
       },
       redirect: 'follow',
@@ -263,6 +341,10 @@ export async function importFromUrl(rawUrl) {
   }
 
   const domain = url.hostname.replace(/^www\./, '');
+
+  const mealBoard = mealBoardFile(url, res, html);
+  if (mealBoard) return draftFromMealBoard(mealBoard);
+
   let recipe = null;
   const ldBlocks = html.matchAll(/<script[^>]*type\s*=\s*["']application\/ld\+json["'][^>]*>([\s\S]*?)<\/script>/gi);
   for (const [, block] of ldBlocks) {

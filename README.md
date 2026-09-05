@@ -61,6 +61,12 @@ invite only, running on Cloudflare Workers + D1 + R2.
 - **Invite only**: the group admin creates single-use invite links to text to friends; new members
   automatically become friends with everyone in the book
 - **Tags**: built-in meal/tag chips plus your own custom tags, reusable across recipes and filters
+- **Works without a signal**: once it has opened on a phone, it opens again in a cabin or a
+  basement supermarket, on the copy of the book it last saw. Recipes, the plan for any week that's
+  been looked at, the pantry and the grocery list all read; ticks, new lines, rewordings, pantry
+  counts, plan changes, ratings, notes and new or edited recipes are kept on the phone and sent
+  when the connection returns, in the order they were made. A line across the top says which of
+  those is going on. Photos, imports, saving a friend's recipe and signing in need the connection
 - **Google sign-in**, with a passwordless dev sign-in fallback for local development
 - **AI & API access**: each member can point an AI assistant at their own recipes, pantry and meal
   plan. **ChatGPT** connects itself: add the connector, sign in, say yes. **Cursor, Claude and

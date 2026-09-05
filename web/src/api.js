@@ -1,10 +1,34 @@
+import { net } from './offline.js';
+
+// A read that hangs is worse than one that fails: with one bar of signal the
+// phone can sit on a request for a minute, and the app has a saved copy it
+// could be showing. Writes get no such limit, since a write cut off halfway
+// is one the server may already have taken.
+const READ_TIMEOUT_MS = 12000;
+
 async function request(path, options = {}) {
-  const res = await fetch(path, {
-    headers: options.body instanceof FormData ? {} : { 'Content-Type': 'application/json' },
-    credentials: 'same-origin',
-    ...options,
-    body: options.body instanceof FormData ? options.body : options.body ? JSON.stringify(options.body) : undefined,
-  });
+  const method = (options.method || 'GET').toUpperCase();
+  const controller = method === 'GET' ? new AbortController() : null;
+  const timer = controller && setTimeout(() => controller.abort(), READ_TIMEOUT_MS);
+  let res;
+  try {
+    res = await fetch(path, {
+      headers: options.body instanceof FormData ? {} : { 'Content-Type': 'application/json' },
+      credentials: 'same-origin',
+      signal: controller?.signal,
+      ...options,
+      body: options.body instanceof FormData ? options.body : options.body ? JSON.stringify(options.body) : undefined,
+    });
+  } catch {
+    // No response at all, as opposed to a bad one: the server can't be reached
+    net.set(false);
+    const err = new Error('You\u2019re offline');
+    err.offline = true;
+    throw err;
+  } finally {
+    clearTimeout(timer);
+  }
+  net.set(true);
   let data = null;
   try {
     data = await res.json();
@@ -17,6 +41,16 @@ async function request(path, options = {}) {
     throw err;
   }
   return data;
+}
+
+/** Send a write kept from a spell offline, as the queue describes it. */
+export function sendQueued(entry) {
+  let body = entry.body;
+  if (entry.form) {
+    body = new FormData();
+    for (const [k, v] of Object.entries(entry.form)) body.append(k, v);
+  }
+  return request(entry.path, { method: entry.method, body });
 }
 
 export const api = {

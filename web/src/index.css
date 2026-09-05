@@ -218,6 +218,16 @@ input, textarea, select { font-size: 16px; }
 .sheet-sub { font-size: 13px; color: var(--muted); margin-top: 3px; line-height: 1.5; }
 
 /* --- toast --- */
+/* No signal, or changes waiting for one: a line across the top of the shell,
+   above whichever screen is up, so it's read once rather than toasted at
+   every tap. The shell is a flex column, so it takes its own height and the
+   screen below keeps scrolling inside what's left. */
+.offline-bar {
+  flex: 0 0 auto; padding: 6px 20px; text-align: center;
+  background: var(--note-bg); color: var(--chip-fg); border-bottom: 1px solid var(--note-bd);
+  font-size: 12.5px; font-weight: 600;
+}
+
 .toast {
   position: absolute; left: 50%; bottom: 104px; transform: translateX(-50%);
   background: var(--toast-bg); color: #fdfcf9; font-size: 13.5px; font-weight: 600;

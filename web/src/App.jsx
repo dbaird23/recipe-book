@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { api } from './api.js';
+import { api, sendQueued } from './api.js';
 import { TabBar } from './components.jsx';
 import SignIn from './screens/SignIn.jsx';
 import Home from './screens/Home.jsx';
@@ -11,17 +11,33 @@ import Pantry from './screens/Pantry.jsx';
 import Groceries from './screens/Groceries.jsx';
 import Connect from './screens/Connect.jsx';
 import { ProfileSheet, ApiKeysSheet, FilterSheet, ShareSheet, InviteSheet, RemoveFriendSheet, PlanPickerSheet, PlanRecipeSheet } from './sheets.jsx';
-import { matchesFilters, customTagsFrom, nextSort, groupGroceries, splitSpokenEntries, MEAL_SLOTS, mondayOf, addDays, isoDate } from './util.js';
+import {
+  matchesFilters, customTagsFrom, nextSort, groupGroceries, splitSpokenEntries, MEAL_SLOTS, mondayOf, addDays, isoDate,
+  grocerySection, parsePantryEntry, cleanNut, autoNut, countIngredients,
+} from './util.js';
+import {
+  net, readStore, writeStore, removeStore, tempId, attempt, flush, pending, subscribeQueue, clearQueue,
+} from './offline.js';
 
 const EMPTY_FILTERS = { selMeals: [], selTags: [], query: '', rating: 0 };
+const DEFAULT_CONFIG = { googleEnabled: false, devLoginEnabled: true, googleClientId: null, scanEnabled: false };
 
-function readStore(key) {
-  try {
-    return JSON.parse(localStorage.getItem(key) || '{}');
-  } catch {
-    return {};
-  }
+// What the server last said, kept so the app opens on it with no signal. The
+// book is everything the home, friends, pantry and grocery screens show; the
+// plan is kept a week at a time, for the weeks that have been looked at.
+const CACHE = { config: 'rb-cache-config', user: 'rb-cache-user', book: 'rb-cache-book', plan: 'rb-cache-plan' };
+const PLAN_WEEKS_KEPT = 12;
+
+function rememberPlanWeek(key, entries) {
+  const all = readStore(CACHE.plan, {});
+  delete all[key];
+  const next = { ...all, [key]: entries };
+  const keys = Object.keys(next);
+  while (keys.length > PLAN_WEEKS_KEPT) delete next[keys.shift()];
+  writeStore(CACHE.plan, next);
 }
+
+const emptyDay = (date) => ({ date, note: '', meals: { breakfast: [], lunch: [], dinner: [] } });
 
 export default function App() {
   const [config, setConfig] = useState(null);
@@ -60,7 +76,7 @@ export default function App() {
   // round the shop, not something worth a round trip while you're standing in
   // an aisle. Both are filed under the week they belong to, so last week's
   // shop doesn't quietly hide this week's flour.
-  const [groceryChecked, setGroceryChecked] = useState(() => readStore('rb-grocery-v4'));
+  const [groceryChecked, setGroceryChecked] = useState(() => readStore('rb-grocery-v4', {}));
   const [shopping, setShopping] = useState(false);
   // Lines reworded for this week's shop. A recipe's wording belongs to the
   // recipe, so the new words are kept here rather than written back to it.
@@ -72,23 +88,115 @@ export default function App() {
   const [toastMsg, setToastMsg] = useState(null);
   const toastTimer = useRef(null);
 
+  // Whether the server can be reached, and how many writes are waiting for it
+  const [online, setOnline] = useState(net.online);
+  const [queued, setQueued] = useState(pending());
+  // Set once the book on screen is real (from the server or the saved copy),
+  // so the saved copy is only ever written from something worth keeping
+  const bookLoaded = useRef(false);
+
   const toast = useCallback((msg) => {
     clearTimeout(toastTimer.current);
     setToastMsg(msg);
     toastTimer.current = setTimeout(() => setToastMsg(null), 2200);
   }, []);
 
-  const loadAll = useCallback(async () => {
-    const [mine, fr, all, kitchen, list] = await Promise.all([
-      api.myRecipes(), api.friends(), api.allFriendRecipes(), api.pantry(), api.groceries(),
-    ]);
-    setMyRecipes(mine.recipes);
-    setFriends(fr.friends);
-    setAllFriendRecipes(all.recipes);
-    setPantry(kitchen.items);
-    setGroceryItems(list.items);
-    return mine.recipes;
+  const applyBook = useCallback((book) => {
+    setMyRecipes(book.myRecipes);
+    setFriends(book.friends);
+    setAllFriendRecipes(book.allFriendRecipes);
+    setPantry(book.pantry);
+    setGroceryItems(book.groceryItems);
+    bookLoaded.current = true;
   }, []);
+
+  // Everything the server holds for this account, or, when it can't be
+  // reached, the copy saved last time it could. While writes made offline
+  // are still waiting to go, the server's answer is left alone: it doesn't
+  // know about them yet, and putting it on screen would make them vanish
+  // until they'd been sent.
+  const loadAll = useCallback(async () => {
+    try {
+      const [mine, fr, all, kitchen, list] = await Promise.all([
+        api.myRecipes(), api.friends(), api.allFriendRecipes(), api.pantry(), api.groceries(),
+      ]);
+      if (pending() && bookLoaded.current) return;
+      applyBook({
+        myRecipes: mine.recipes, friends: fr.friends, allFriendRecipes: all.recipes, pantry: kitchen.items, groceryItems: list.items,
+      });
+    } catch (e) {
+      if (!e.offline) throw e;
+      // A refresh that fails leaves what's on screen; a first load that fails opens on the saved copy
+      if (bookLoaded.current) return;
+      const saved = readStore(CACHE.book);
+      if (!saved) throw e;
+      applyBook(saved);
+    }
+  }, [applyBook]);
+
+  // The saved copy follows the book on screen, including what's been changed
+  // offline, so closing the app with no signal loses nothing
+  useEffect(() => {
+    if (!user || !bookLoaded.current) return;
+    writeStore(CACHE.book, { myRecipes, friends, allFriendRecipes, pantry, groceryItems, savedAt: Date.now() });
+  }, [user, myRecipes, friends, allFriendRecipes, pantry, groceryItems]);
+
+  useEffect(() => {
+    if (user) writeStore(CACHE.user, user);
+  }, [user]);
+
+  // Send what was written while away, then read the book back from the
+  // server, which now has the real ids for anything made offline. Says
+  // whether it did, so a caller that would read the book anyway needn't twice.
+  const syncUp = useCallback(async () => {
+    if (!pending() || !net.online) return false;
+    const { sent, failed, idMap } = await flush(sendQueued);
+    if (failed.length === 1) toast(`Couldn\u2019t save ${failed[0].entry.label}: ${failed[0].error.message}`);
+    else if (failed.length) toast(`${failed.length} changes made offline couldn\u2019t be saved`);
+    if (!sent) return false;
+    // Ticks and the open recipe were keyed by ids handed out offline
+    const swap = (id) => idMap[id] || id;
+    setGroceryChecked((prev) => {
+      const next = Object.fromEntries(Object.keys(prev).map((k) => [swap(k), true]));
+      writeStore('rb-grocery-v4', next);
+      return next;
+    });
+    setCurrentRecipe((r) => (r && idMap[r.id] ? { ...r, id: idMap[r.id] } : r));
+    setEditingId((id) => (id ? swap(id) : id));
+    await loadAll().catch(() => {});
+    setResumedAt(Date.now());
+    if (!failed.length) toast(sent === 1 ? 'Saved what you did offline' : `Saved ${sent} changes made offline`);
+    return true;
+  }, [loadAll, toast]);
+
+  // The connection coming back, or something new joining the queue while
+  // it's there, is the moment to send. While it isn't there, ask again now
+  // and then: a phone that says it's online with nothing behind it never
+  // raises the event that would say otherwise.
+  useEffect(() => {
+    // Read at mount as well as on change: the first requests of a session go
+    // out before anything is listening, and they're the ones that find out
+    const sync = () => { setOnline(net.online); setQueued(pending()); };
+    sync();
+    const unsubNet = net.subscribe(sync);
+    const unsubQueue = subscribeQueue(sync);
+    return () => { unsubNet(); unsubQueue(); };
+  }, []);
+
+  useEffect(() => {
+    if (!user) return;
+    const unsubNet = net.subscribe(() => {
+      if (net.online) syncUp().then((reloaded) => reloaded || loadAll()).catch(() => {});
+    });
+    const unsubQueue = subscribeQueue(() => {
+      if (net.online) syncUp().catch(() => {});
+    });
+    const timer = setInterval(() => {
+      if (!net.online) api.config().catch(() => {});
+      else if (pending()) syncUp().catch(() => {});
+    }, 20000);
+    return () => { unsubNet(); unsubQueue(); clearInterval(timer); };
+  }, [user, syncUp, loadAll]);
 
   // A phone doesn't reload the app when you come back to it: on the home
   // screen it's resumed exactly as it was left, so anything that arrived while
@@ -100,17 +208,21 @@ export default function App() {
     if (!user) return;
     const onShow = () => {
       if (document.visibilityState !== 'visible') return;
-      loadAll().catch(() => {});
+      syncUp().then((reloaded) => reloaded || loadAll()).catch(() => {});
       setResumedAt(Date.now());
     };
     document.addEventListener('visibilitychange', onShow);
     return () => document.removeEventListener('visibilitychange', onShow);
-  }, [user, loadAll]);
+  }, [user, loadAll, syncUp]);
 
   // Boot: config, invite path, session, deep link
   useEffect(() => {
     (async () => {
-      const cfg = await api.config().catch(() => ({ googleEnabled: false, devLoginEnabled: true, googleClientId: null, scanEnabled: false }));
+      // With no signal, the config and the account are whatever they were last time
+      const cfg = await api.config().then(
+        (c) => { writeStore(CACHE.config, c); return c; },
+        (e) => (e.offline && readStore(CACHE.config)) || DEFAULT_CONFIG
+      );
       setConfig(cfg);
 
       const inviteMatch = location.pathname.match(/^\/invite\/([a-f0-9]+)$/);
@@ -125,11 +237,23 @@ export default function App() {
       if (connecting) setConnectRq(connecting);
 
       try {
-        const { user: u } = await api.me();
+        let u;
+        try {
+          ({ user: u } = await api.me());
+        } catch (e) {
+          if (!e.offline) throw e;
+          u = readStore(CACHE.user);
+          if (!u) throw e;
+        }
         setUser(u);
         // The consent screen needs nothing but the account, and this tab is
         // about to leave for whoever asked, so don't pull the whole book in.
-        if (!connecting) await loadAll();
+        // Anything written offline last time goes first, so the book read
+        // back has it.
+        if (!connecting) {
+          await syncUp().catch(() => {});
+          await loadAll();
+        }
         const r = new URLSearchParams(location.search).get('r');
         if (r) {
           try {
@@ -147,7 +271,7 @@ export default function App() {
       }
       setBooted(true);
     })();
-  }, [loadAll]);
+  }, [loadAll, syncUp]);
 
   async function handleSignedIn(u) {
     setUser(u);
@@ -156,7 +280,17 @@ export default function App() {
   }
 
   async function signOut() {
-    await api.logout();
+    try {
+      await api.logout();
+    } catch (e) {
+      toast(e.message);
+      return;
+    }
+    // The saved copy belongs to the account that's leaving
+    bookLoaded.current = false;
+    for (const key of [CACHE.user, CACHE.book, CACHE.plan, 'rb-grocery-v4']) removeStore(key);
+    clearQueue();
+    setGroceryChecked({});
     setUser(null);
     setSheet(null);
     setScreen('home');
@@ -183,25 +317,75 @@ export default function App() {
 
   const weekStart = isoDate(mondayOf(weekOffset));
   const weekEnd = isoDate(addDays(mondayOf(weekOffset), 6));
+  const weekKey = `${weekStart}:${weekEnd}`;
 
   useEffect(() => {
     if (!user || (screen !== 'plan' && screen !== 'groceries')) return;
     let stale = false;
     api
       .plan(weekStart, weekEnd)
-      .then(({ entries }) => { if (!stale) setPlanEntries(entries); })
-      .catch((e) => toast(e.message));
+      .then(({ entries }) => {
+        if (stale) return;
+        setPlanEntries(entries);
+        rememberPlanWeek(weekKey, entries);
+      })
+      .catch((e) => {
+        if (stale) return;
+        if (!e.offline) return toast(e.message);
+        // The week as it was last seen, changes made offline included
+        const saved = readStore(CACHE.plan, {})[weekKey];
+        setPlanEntries(saved || []);
+        if (!saved) toast('You\u2019re offline, and this week hasn\u2019t been looked at yet');
+      });
     return () => { stale = true; };
-  }, [user, screen, weekStart, weekEnd, resumedAt]);
+  }, [user, screen, weekStart, weekEnd, resumedAt]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  /** A recipe as a planned meal carries it: enough to draw the row and open it. */
+  function planRecipeOf(id) {
+    const r = plannableRecipes.find((x) => x.id === id);
+    if (!r) return null;
+    return {
+      id: r.id, title: r.title, ownerId: r.ownerId, ownerName: r.ownerName, mine: r.ownerId === user.id,
+      prep: r.prep, cook: r.cook, servings: r.servings, ing: r.ing, photoUrl: r.photos?.[0]?.url || null,
+    };
+  }
+
+  // The day as the server would hand it back after this write, worked out
+  // here for when the server can't be asked
+  function localPlanDay(entries, date, body) {
+    const current = entries.find((e) => e.date === date) || emptyDay(date);
+    const meals = { ...current.meals };
+    for (const s of MEAL_SLOTS) {
+      if (!(s.key in body)) continue;
+      const wanted = body[s.key] === null ? [] : [].concat(body[s.key]);
+      meals[s.key] = wanted.map((d) =>
+        d.type === 'recipe'
+          ? { id: tempId(), type: 'recipe', text: null, recipe: planRecipeOf(d.recipeId) }
+          : { id: tempId(), type: d.type, text: d.type === 'text' ? String(d.text || '').trim().slice(0, 120) : null, recipe: null }
+      );
+    }
+    const note = 'note' in body ? String(body.note || '').trim().slice(0, 200) : current.note;
+    return { date, note, meals };
+  }
+
+  function putPlanDay(entry, key = weekKey) {
+    setPlanEntries((prev) => {
+      const rest = prev.filter((e) => e.date !== entry.date);
+      const anything = entry.note || MEAL_SLOTS.some((s) => entry.meals[s.key]?.length);
+      const next = anything ? [...rest, entry] : rest;
+      rememberPlanWeek(key, next);
+      return next;
+    });
+  }
 
   async function savePlanDay(date, body) {
     try {
-      const { entry } = await api.setPlanDay(date, body);
-      setPlanEntries((prev) => {
-        const rest = prev.filter((e) => e.date !== date);
-        const anything = entry.note || MEAL_SLOTS.some((s) => entry.meals[s.key]?.length);
-        return anything ? [...rest, entry] : rest;
-      });
+      const { entry } = await attempt(
+        () => api.setPlanDay(date, body),
+        { method: 'PUT', path: `/api/plan/${date}`, body, label: 'a change to the plan' },
+        () => ({ entry: localPlanDay(planEntries, date, body) })
+      );
+      putPlanDay(entry);
       return entry;
     } catch (e) {
       toast(e.message);
@@ -244,13 +428,35 @@ export default function App() {
   // already on it is read fresh rather than taken from planEntries, which could
   // be another week's or not loaded at all: a stale read would silently drop
   // whatever else was on that meal.
+  //
+  // Offline, the fresh read is the saved copy of the week the day falls in.
+  // A week never looked at has no copy, and guessing the meal empty could
+  // wipe what's on it, so that one waits for a connection.
   async function planRecipeOn(date, meal, recipeId) {
     try {
-      const { entries } = await api.plan(date, date);
+      let entries;
+      let key = weekKey;
+      try {
+        ({ entries } = await api.plan(date, date));
+      } catch (e) {
+        if (!e.offline) throw e;
+        const monday = new Date(`${date}T12:00:00`);
+        monday.setDate(monday.getDate() - ((monday.getDay() + 6) % 7));
+        key = `${isoDate(monday)}:${isoDate(addDays(monday, 6))}`;
+        entries = readStore(CACHE.plan, {})[key];
+        if (!entries) throw new Error('You\u2019re offline, and that week hasn\u2019t been looked at yet');
+      }
       const already = (entries.find((e) => e.date === date)?.meals?.[meal] || []).map((m) =>
         m.type === 'recipe' ? { type: 'recipe', recipeId: m.recipe?.id } : { type: m.type, text: m.text }
       );
-      await savePlanDay(date, { [meal]: [...writable(already), { type: 'recipe', recipeId }] });
+      const body = { [meal]: [...writable(already), { type: 'recipe', recipeId }] };
+      const { entry } = await attempt(
+        () => api.setPlanDay(date, body),
+        { method: 'PUT', path: `/api/plan/${date}`, body, label: 'a change to the plan' },
+        () => ({ entry: localPlanDay(entries, date, body) })
+      );
+      if (key === weekKey) putPlanDay(entry);
+      else rememberPlanWeek(key, [...entries.filter((e) => e.date !== date), entry]);
       return true;
     } catch (e) {
       toast(e.message);
@@ -286,8 +492,19 @@ export default function App() {
   // The API reads one line as the run of items it may be ("milk, eggs and
   // bread"), so what comes back is a list however it was typed or dictated.
   async function addGroceryItem(text, section) {
+    // What the server would make of the line, for when it can't be asked
+    const guess = splitSpokenEntries(text).slice(0, 30).map((t) => ({
+      id: tempId(), text: t.slice(0, 100), section: section || grocerySection(t), sources: [],
+    }));
     try {
-      const { items } = await api.addGroceryItem(text, section);
+      const { items } = await attempt(
+        () => api.addGroceryItem(text, section),
+        {
+          method: 'POST', path: '/api/groceries', body: { text, section }, label: `adding ${text}`,
+          made: { from: 'items', ids: guess.map((g) => g.id) },
+        },
+        () => ({ items: guess })
+      );
       setGroceryItems((prev) => [...prev, ...items]);
       if (items.length > 1) toast(`${items.length} items added`);
     } catch (e) {
@@ -297,7 +514,11 @@ export default function App() {
 
   async function removeGroceryItem(item) {
     try {
-      await api.removeGroceryItem(item.id);
+      await attempt(
+        () => api.removeGroceryItem(item.id),
+        { method: 'DELETE', path: `/api/groceries/${item.id}`, label: `removing ${item.label || item.text}` },
+        () => ({ ok: true })
+      );
       setGroceryItems((prev) => prev.filter((x) => x.id !== item.id));
     } catch (e) {
       toast(e.message);
@@ -309,7 +530,11 @@ export default function App() {
   // shop ("2 lb chicken thighs, boneless" is not how you buy them).
   async function renameGroceryItem(item, text) {
     try {
-      const { item: saved } = await api.updateGroceryItem(item.id, text);
+      const { item: saved } = await attempt(
+        () => api.updateGroceryItem(item.id, text),
+        { method: 'PATCH', path: `/api/groceries/${item.id}`, body: { text }, label: `rewording ${text}` },
+        () => ({ item: { id: item.id, text: text.trim().slice(0, 100), section: grocerySection(text) } })
+      );
       setGroceryItems((prev) => prev.map((x) => (x.id === saved.id ? saved : x)));
     } catch (e) {
       toast(e.message);
@@ -348,7 +573,11 @@ export default function App() {
     const done = Object.keys(groceryChecked);
     if (!done.length) return;
     try {
-      const { removed } = await api.clearGroceries(done);
+      const { removed } = await attempt(
+        () => api.clearGroceries(done),
+        { method: 'POST', path: '/api/groceries/clear', body: { ids: done }, label: 'finishing the shop' },
+        () => ({ removed: done.length })
+      );
       setGroceryItems((prev) => prev.filter((x) => !groceryChecked[x.id]));
       setGroceryChecked({});
       localStorage.removeItem('rb-grocery-v4');
@@ -365,7 +594,20 @@ export default function App() {
     let already = 0;
     for (const line of splitSpokenEntries(text)) {
       try {
-        const { item } = await api.addPantryItem(location, line);
+        const p = parsePantryEntry(line);
+        const guess = { id: tempId(), location, name: p.name.slice(0, 80), qty: p.qty, unit: p.unit };
+        const taken = [...pantry, ...added].some(
+          (x) => x.location === location && x.name.toLowerCase() === guess.name.toLowerCase()
+        );
+        const { item } = await attempt(
+          () => api.addPantryItem(location, line),
+          { method: 'POST', path: '/api/pantry', body: { location, text: line }, label: `adding ${line}`, made: { from: 'item', ids: [guess.id] } },
+          () => {
+            if (!guess.name) throw new Error('Type something to add first');
+            if (taken) throw new Error(`Already in your ${location}`);
+            return { item: guess };
+          }
+        );
         added.push(item);
       } catch (e) {
         if (/already/i.test(e.message)) already++;
@@ -384,7 +626,17 @@ export default function App() {
   // "beans" reworded to "3 cans beans" carries a new one.
   async function renamePantryItem(id, text) {
     try {
-      const { item } = await api.renamePantryItem(id, text);
+      const { item } = await attempt(
+        () => api.renamePantryItem(id, text),
+        { method: 'PATCH', path: `/api/pantry/${id}`, body: { text }, label: `rewording ${text}` },
+        () => {
+          const was = pantry.find((x) => x.id === id);
+          const p = parsePantryEntry(text);
+          if (!p.name) throw new Error('Type something to add first');
+          const recount = p.hadQty || !was;
+          return { item: { id, location: was?.location, name: p.name.slice(0, 80), qty: recount ? p.qty : was.qty, unit: recount ? p.unit : was.unit } };
+        }
+      );
       setPantry((prev) => prev.map((x) => (x.id === item.id ? item : x)));
       return item;
     } catch (e) {
@@ -397,7 +649,11 @@ export default function App() {
   async function setPantryQty(item, qty) {
     setPantry((prev) => prev.map((x) => (x.id === item.id ? { ...x, qty } : x)));
     try {
-      const { item: saved } = await api.setPantryQty(item.id, qty);
+      const { item: saved } = await attempt(
+        () => api.setPantryQty(item.id, qty),
+        { method: 'PATCH', path: `/api/pantry/${item.id}`, body: { qty }, label: `counting ${item.name}` },
+        () => ({ item: { ...item, qty: Math.max(0, +qty || 0) } })
+      );
       setPantry((prev) => prev.map((x) => (x.id === saved.id ? saved : x)));
     } catch (e) {
       setPantry((prev) => prev.map((x) => (x.id === item.id ? item : x)));
@@ -407,7 +663,11 @@ export default function App() {
 
   async function removePantryItem(item) {
     try {
-      await api.removePantryItem(item.id);
+      await attempt(
+        () => api.removePantryItem(item.id),
+        { method: 'DELETE', path: `/api/pantry/${item.id}`, label: `removing ${item.name}` },
+        () => ({ ok: true })
+      );
       setPantry((prev) => prev.filter((x) => x.id !== item.id));
       toast(`${item.name} removed`);
     } catch (e) {
@@ -421,7 +681,17 @@ export default function App() {
       return;
     }
     try {
-      const { items, removed } = await api.savePantryInventory(updates);
+      const { items, removed } = await attempt(
+        () => api.savePantryInventory(updates),
+        { method: 'PUT', path: '/api/pantry', body: { items: updates }, label: 'taking inventory' },
+        () => {
+          const counts = new Map(updates.map((u) => [String(u.id), Math.max(0, +u.qty || 0)]));
+          const kept = pantry
+            .map((x) => (counts.has(x.id) ? { ...x, qty: counts.get(x.id) } : x))
+            .filter((x) => !counts.has(x.id) || x.qty > 0);
+          return { items: kept, removed: pantry.length - kept.length };
+        }
+      );
       setPantry(items);
       toast(removed === 0 ? 'Pantry up to date' : `${removed} ${removed === 1 ? 'item' : 'items'} removed`);
     } catch (e) {
@@ -435,8 +705,13 @@ export default function App() {
     setScreen('recipe');
   }
 
-  // The plan and the grocery list hold recipe ids, not whole recipes
+  // The plan and the grocery list hold recipe ids, not whole recipes. The
+  // book on screen usually has it, and is the same shape the server sends,
+  // so that's the copy opened: it's what's there with no signal, and it's
+  // what's there at all for a recipe made offline.
   async function openRecipeById(id, from) {
+    const known = [...myRecipes, ...allFriendRecipes, ...friendRecipes].find((r) => r.id === id);
+    if (known) return openRecipe(known, from);
     try {
       const { recipe } = await api.getRecipe(id);
       openRecipe(recipe, from);
@@ -445,12 +720,19 @@ export default function App() {
     }
   }
 
+  // A friend's shelf is their part of the friends' recipes already loaded,
+  // shown at once and then read fresh where there's a connection
   async function openFriend(f) {
     setCurrentFriend(f);
     setFilters(EMPTY_FILTERS);
     setScreen('friend');
-    const { recipes } = await api.friendRecipes(f.id);
-    setFriendRecipes(recipes);
+    setFriendRecipes(allFriendRecipes.filter((r) => r.ownerId === f.id));
+    try {
+      const { recipes } = await api.friendRecipes(f.id);
+      setFriendRecipes(recipes);
+    } catch (e) {
+      if (!e.offline) toast(e.message);
+    }
   }
 
   async function saveDraft(d, files) {
@@ -472,17 +754,57 @@ export default function App() {
       nut: d.nutImport || undefined,
       photoUrls: d.photoUrls,
     };
+    // The recipe as the server will hand it back, for when it can't be asked
+    const newId = tempId();
+    const localRecipe = () => {
+      const clean = (v) => String(v ?? '').trim();
+      const list = (v) => (Array.isArray(v) ? v.map(clean).filter(Boolean) : []);
+      const fields = {
+        title: clean(body.title), prep: Math.max(0, +body.prep || 0), cook: Math.max(0, +body.cook || 0),
+        servings: Math.max(1, +body.servings || 1), tags: list(body.tags), ing: list(body.ing), dir: list(body.dir),
+        notes: clean(body.notes), source: clean(body.source) || null, from: clean(body.from) || null,
+      };
+      const was = editingId ? currentRecipe : null;
+      const keepNut = was?.nutEdited ? was.nut : autoNut(countIngredients(fields.ing));
+      const recipe = was
+        ? { ...was, ...fields, source: fields.source ?? was.source, nut: keepNut }
+        : {
+            id: newId, ownerId: user.id, ownerName: user.name, ...fields,
+            nut: body.nut ? cleanNut(body.nut) : keepNut, nutEdited: !!body.nut, rating: 0,
+            createdAt: new Date().toISOString(), comments: [],
+            photos: (body.photoUrls || []).filter((u) => /^https?:\/\//.test(u)).slice(0, 8).map((url, i) => ({ id: tempId(), url, position: i })),
+          };
+      return { recipe };
+    };
     try {
       let recipe;
-      if (editingId) {
-        ({ recipe } = await api.updateRecipe(editingId, body));
+      if (files.length) {
+        // The photos can't wait in the queue (a file is not a thing the
+        // browser will keep for us), so the recipe doesn't either: with no
+        // signal, the draft stays put and says why
+        if (editingId) ({ recipe } = await api.updateRecipe(editingId, body));
+        else ({ recipe } = await api.createRecipe(body));
+      } else if (editingId) {
+        ({ recipe } = await attempt(
+          () => api.updateRecipe(editingId, body),
+          { method: 'PATCH', path: `/api/recipes/${editingId}`, body, label: `the edit to ${body.title}` },
+          localRecipe
+        ));
       } else {
-        ({ recipe } = await api.createRecipe(body));
+        ({ recipe } = await attempt(
+          () => api.createRecipe(body),
+          { method: 'POST', path: '/api/recipes', body, label: `the recipe ${body.title}`, made: { from: 'recipe', ids: [newId] } },
+          localRecipe
+        ));
       }
       for (const f of files) {
         ({ recipe } = await api.addPhoto(recipe.id, f));
       }
-      await loadAll();
+      // The book on screen gets it now, and the server's copy replaces it
+      // when the server can be read
+      if (editingId) applyRecipe(recipe);
+      else setMyRecipes((prev) => [recipe, ...prev]);
+      await loadAll().catch(() => {});
       setCurrentRecipe(recipe);
       setBackTo('home');
       setScreen('recipe');
@@ -490,14 +812,19 @@ export default function App() {
       setEditingId(null);
       toast(editingId ? 'Recipe updated' : 'Recipe saved');
     } catch (e) {
-      toast(e.message);
+      toast(e.offline && files.length ? 'Photos need a connection: drop them to save now, or try again later' : e.message);
     }
   }
 
   async function deleteRecipe() {
     try {
-      await api.deleteRecipe(editingId);
-      await loadAll();
+      await attempt(
+        () => api.deleteRecipe(editingId),
+        { method: 'DELETE', path: `/api/recipes/${editingId}`, label: 'deleting a recipe' },
+        () => ({ ok: true })
+      );
+      setMyRecipes((prev) => prev.filter((r) => r.id !== editingId));
+      await loadAll().catch(() => {});
       setDraft(null);
       setEditingId(null);
       setCurrentRecipe(null);
@@ -516,9 +843,22 @@ export default function App() {
     );
   }
 
+  const offlineBar = (!online || queued > 0) && (
+    <div className="offline-bar" role="status">
+      {!online
+        ? queued
+          ? `Offline \u00b7 ${queued} ${queued === 1 ? 'change' : 'changes'} will be saved when you\u2019re back`
+          : user
+            ? 'Offline \u00b7 showing what was last saved'
+            : 'Offline \u00b7 signing in needs a connection'
+        : `Saving ${queued} ${queued === 1 ? 'change' : 'changes'}\u2026`}
+    </div>
+  );
+
   if (!user) {
     return (
       <div className="app">
+        {offlineBar}
         <SignIn
           config={config}
           invite={invite && !invite.error ? invite : null}
@@ -552,6 +892,7 @@ export default function App() {
 
   return (
     <div className="app">
+      {offlineBar}
       {screen === 'home' && (
         <Home
           user={user}
@@ -675,29 +1016,75 @@ export default function App() {
             }
           }}
           onUpdateNotes={async (notes) => {
-            const { recipe } = await api.updateRecipe(currentRecipe.id, { notes });
-            applyRecipe(recipe);
+            try {
+              const { recipe } = await attempt(
+                () => api.updateRecipe(currentRecipe.id, { notes }),
+                { method: 'PATCH', path: `/api/recipes/${currentRecipe.id}`, body: { notes }, label: 'the notes' },
+                () => ({ recipe: { ...currentRecipe, notes: notes.trim() } })
+              );
+              applyRecipe(recipe);
+            } catch (e) {
+              toast(e.message);
+            }
           }}
           onUpdateNut={async (nut, edited) => {
-            const { recipe } = await api.updateRecipe(currentRecipe.id, { nut, nutEdited: edited });
-            applyRecipe(recipe);
+            try {
+              const { recipe } = await attempt(
+                () => api.updateRecipe(currentRecipe.id, { nut, nutEdited: edited }),
+                { method: 'PATCH', path: `/api/recipes/${currentRecipe.id}`, body: { nut, nutEdited: edited }, label: 'the nutrition' },
+                () => ({ recipe: { ...currentRecipe, nut: cleanNut(nut), nutEdited: edited !== false } })
+              );
+              applyRecipe(recipe);
+            } catch (e) {
+              toast(e.message);
+            }
           }}
           onRate={async (rating) => {
             try {
-              const { recipe } = await api.rateRecipe(currentRecipe.id, rating);
+              const { recipe } = await attempt(
+                () => api.rateRecipe(currentRecipe.id, rating),
+                { method: 'PATCH', path: `/api/recipes/${currentRecipe.id}`, body: { rating }, label: 'the rating' },
+                () => ({ recipe: { ...currentRecipe, rating: Math.round(+rating || 0) } })
+              );
               applyRecipe(recipe);
             } catch (e) {
               toast(e.message);
             }
           }}
           onAddComment={async (text, photo) => {
-            const { recipe } = await api.addComment(currentRecipe.id, text, photo);
-            applyRecipe(recipe);
-            toast('Comment posted');
+            try {
+              // A comment with a photo needs the connection; words alone can wait
+              const { recipe } = photo
+                ? await api.addComment(currentRecipe.id, text, photo)
+                : await attempt(
+                    () => api.addComment(currentRecipe.id, text, null),
+                    { method: 'POST', path: `/api/recipes/${currentRecipe.id}/comments`, form: { text }, label: 'a comment' },
+                    () => ({
+                      recipe: {
+                        ...currentRecipe,
+                        comments: [
+                          ...(currentRecipe.comments || []),
+                          {
+                            id: tempId(), text: text.trim(), photoUrl: null, createdAt: new Date().toISOString(),
+                            author: { id: user.id, name: user.name, avatarUrl: user.avatarUrl || null },
+                          },
+                        ],
+                      },
+                    })
+                  );
+              applyRecipe(recipe);
+              toast('Comment posted');
+            } catch (e) {
+              toast(e.offline && photo ? 'A photo needs a connection: post the words now, or try again later' : e.message);
+            }
           }}
           onDeleteComment={async (commentId) => {
             try {
-              const { recipe } = await api.deleteComment(currentRecipe.id, commentId);
+              const { recipe } = await attempt(
+                () => api.deleteComment(currentRecipe.id, commentId),
+                { method: 'DELETE', path: `/api/recipes/${currentRecipe.id}/comments/${commentId}`, label: 'deleting a comment' },
+                () => ({ recipe: { ...currentRecipe, comments: (currentRecipe.comments || []).filter((c) => c.id !== commentId) } })
+              );
               applyRecipe(recipe);
               toast('Comment deleted');
             } catch (e) {
@@ -721,8 +1108,12 @@ export default function App() {
             if (added > 1) toast(`Added ${added} photos`);
           }}
           onRemovePhoto={async (photoId) => {
-            const { recipe } = await api.removePhoto(currentRecipe.id, photoId);
-            applyRecipe(recipe);
+            try {
+              const { recipe } = await api.removePhoto(currentRecipe.id, photoId);
+              applyRecipe(recipe);
+            } catch (e) {
+              toast(e.message);
+            }
           }}
         />
       )}
